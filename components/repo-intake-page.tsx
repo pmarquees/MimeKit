@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { DitherText } from "@/components/dither-text";
 import { RunResult, ScanMode } from "@/lib/models";
 
 type LocalStage = {
@@ -90,7 +91,7 @@ export function RepoIntakePage(): React.ReactElement {
             <span className="u-caps u-muted">GitHub Auth</span>
             <span>
               {status === "loading"
-                ? "Checking session..."
+                ? <DitherText source="CHECKING SESSION" />
                 : session?.user
                   ? `Signed in as ${session.user.name ?? session.user.email ?? "GitHub user"}`
                   : "Not signed in. Public rate limit may be low."}
@@ -150,7 +151,7 @@ export function RepoIntakePage(): React.ReactElement {
 
           <button type="submit" className="btn-compile" disabled={busy}>
             <span className={`status-dot ${busy ? "active" : ""}`} />
-            {busy ? "Analyzing" : "Analyze Repository"}
+            {busy ? <DitherText source="ANALYZING REPOSITORY" /> : "Analyze Repository"}
           </button>
         </form>
 
@@ -158,7 +159,9 @@ export function RepoIntakePage(): React.ReactElement {
           {stages.map((stage) => (
             <div className="stage-row" key={stage.id}>
               <span>{stage.label}</span>
-              <span className={`stage-pill stage-${stage.status}`}>{stage.status}</span>
+              <span className={`stage-pill stage-${stage.status}`}>
+                {stage.status === "running" ? <DitherText source="RUNNING" /> : stage.status}
+              </span>
             </div>
           ))}
         </div>

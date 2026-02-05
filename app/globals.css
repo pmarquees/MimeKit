@@ -33,6 +33,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.mk-page-root {
+  transition: opacity 0.2s ease, transform 0.2s ease, filter 0.2s ease;
+}
+
+html.mk-booting .mk-page-root {
+  opacity: 0;
+  transform: translateY(6px) scale(0.996);
+  filter: blur(1px);
+  pointer-events: none;
+}
+
 button,
 input,
 textarea,
@@ -675,6 +686,41 @@ select {
   color: var(--text-secondary);
 }
 
+.boot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-image: linear-gradient(130deg, rgba(255, 255, 252, 0.98), rgba(247, 252, 254, 0.98) 50%, rgba(251, 250, 245, 0.98));
+  animation: boot-fade-out 0.18s ease forwards;
+  animation-delay: 0.2s;
+}
+
+.boot-chip {
+  min-width: 290px;
+  max-width: 92vw;
+  border: 1px solid var(--grid-line);
+  background: #fff;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.06);
+  padding: 14px 16px;
+}
+
+.boot-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.boot-text {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  animation: dither-flicker 0.16s steps(2, end) infinite;
+}
+
 .graph-modal-root {
   position: fixed;
   inset: 0;
@@ -739,8 +785,8 @@ select {
 .sheet-panel {
   position: relative;
   z-index: 1;
-  width: min(980px, 100%);
-  max-height: 88vh;
+  width: min(96%);
+  height: 96vh;
   border: 1px solid var(--grid-line);
   border-bottom: none;
   border-top-left-radius: 22px;
@@ -783,7 +829,7 @@ select {
   line-height: 1.5;
   font-size: 12px;
   min-height: 220px;
-  max-height: 54vh;
+  height: 88%;
 }
 
 @keyframes stack-pulse {
@@ -830,6 +876,15 @@ select {
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes boot-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 
@@ -921,5 +976,18 @@ select {
     width: 100%;
     border-top-left-radius: 18px;
     border-top-right-radius: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-page-root,
+  .stack-loading-dot,
+  .stack-loading-text,
+  .boot-text,
+  .graph-modal-panel,
+  .sheet-panel,
+  .boot-overlay {
+    animation: none !important;
+    transition: none !important;
   }
 }

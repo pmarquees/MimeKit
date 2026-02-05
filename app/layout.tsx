@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthSessionProvider } from "@/components/providers/auth-session-provider";
+import { PageBootLoader } from "@/components/page-boot-loader";
 
 export const metadata: Metadata = {
   title: "MimicKit",
@@ -15,7 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AuthSessionProvider>{children}</AuthSessionProvider>
+        <AuthSessionProvider>
+          <PageBootLoader />
+          <div className="mk-page-root">{children}</div>
+        </AuthSessionProvider>
       </body>
     </html>
   );

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { DitherText } from "@/components/dither-text";
 import { techRegistry } from "@/lib/data/tech-registry";
 import { IntentSpec, RunResult, StackCategory, TargetAgent } from "@/lib/models";
 
@@ -19,7 +20,6 @@ type NodeLayout = {
 const STACK_ORDER: StackCategory[] = ["frontend", "backend", "db", "auth", "infra", "language"];
 const CARD_BACKGROUNDS = ["card-bg-2", "card-bg-3", "card-bg-4", "card-bg-5", "card-bg-1"];
 const STACK_DITHER_SOURCE = "REWRITING STACK MAP";
-const DITHER_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@%*";
 
 function titleForCategory(category: StackCategory): string {
   switch (category) {
@@ -99,20 +99,6 @@ function intentSectionEntries(intent: IntentSpec): Array<{ key: string; label: s
   ];
 }
 
-function buildDitherFrame(source: string, frame: number): string {
-  return source
-    .split("")
-    .map((char, index) => {
-      if (char === " ") return " ";
-      const seed = (frame * 17 + index * 31) % 13;
-      if (seed < 5) {
-        return DITHER_ALPHABET[(frame * 11 + index * 7) % DITHER_ALPHABET.length];
-      }
-      return char;
-    })
-    .join("");
-}
-
 const DEFAULT_ALTERNATIVES: Record<StackCategory, string[]> = {
   frontend: ["Remix", "Nuxt", "SvelteKit"],
   backend: ["FastAPI", "Fastify", "NestJS"],
@@ -135,7 +121,6 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
   const [correctedUnknowns, setCorrectedUnknowns] = useState<Record<string, boolean>>({});
   const [correctedLowConfidence, setCorrectedLowConfidence] = useState<Record<string, boolean>>({});
   const [stackSwapLoading, setStackSwapLoading] = useState(false);
-  const [stackSwapDitherText, setStackSwapDitherText] = useState(STACK_DITHER_SOURCE);
   const [graphModalOpen, setGraphModalOpen] = useState(false);
   const [planSheetOpen, setPlanSheetOpen] = useState(false);
   const [planSheetBusy, setPlanSheetBusy] = useState(false);
@@ -178,23 +163,6 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
     }
     return map;
   }, [positioned]);
-
-  useEffect(() => {
-    if (!stackSwapLoading) {
-      setStackSwapDitherText(STACK_DITHER_SOURCE);
-      return;
-    }
-
-    let frame = 0;
-    const timer = window.setInterval(() => {
-      frame += 1;
-      setStackSwapDitherText(buildDitherFrame(STACK_DITHER_SOURCE, frame));
-    }, 72);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [stackSwapLoading]);
 
   async function recompile(nextIntent: IntentSpec): Promise<void> {
     setBusyLabel("Recompiling plan");
@@ -357,7 +325,9 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
     return (
       <main className="intake-shell">
         <section className="intake-card">
-          <h1 className="intake-title">Loading Workspace</h1>
+          <h1 className="intake-title">
+            <DitherText source="LOADING WORKSPACE" />
+          </h1>
         </section>
       </main>
     );
@@ -431,7 +401,7 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
 
           <button className="btn-compile" onClick={() => void onCompileIntent()} disabled={!!busyLabel}>
             <span className={`status-dot ${busyLabel ? "active" : ""}`} />
-            {busyLabel ?? "Compile Intent"}
+            {busyLabel ? <DitherText source={busyLabel.toUpperCase()} /> : "Compile Intent"}
           </button>
 
           <button className="btn-compile ghost-link" onClick={() => setPlanSheetOpen(true)}>
@@ -549,7 +519,7 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
           </div>
 
           <button className="btn-compile" onClick={() => void onRecomputeCorrections()} disabled={!!busyLabel}>
-            Recompute With Corrections
+            {busyLabel ? <DitherText source={busyLabel.toUpperCase()} /> : "Recompute With Corrections"}
           </button>
           {error ? <p className="error-text">{error}</p> : null}
         </section>
@@ -558,7 +528,11 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
       <aside className={`panel-right ${stackSwapLoading ? "panel-right-loading" : ""}`}>
         <div className="u-pad u-border-b panel-head-row spread">
           <span className="u-caps u-bold u-muted">Stack Map</span>
-          {stackSwapLoading ? <span className="stack-map-status">Transforming</span> : null}
+          {stackSwapLoading ? (
+            <span className="stack-map-status">
+              <DitherText source="TRANSFORMING" />
+            </span>
+          ) : null}
         </div>
 
         {stackSwapLoading ? (
@@ -566,7 +540,7 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
             <div className="stack-loading-chip">
               <div className="stack-loading-line">
                 <span className="stack-loading-dot" />
-                <span className="stack-loading-text">{stackSwapDitherText}</span>
+                <DitherText source={STACK_DITHER_SOURCE} className="stack-loading-text" />
               </div>
               <span className="stack-loading-sub">Applying registry transforms and plan rewrite</span>
             </div>
@@ -666,7 +640,7 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
             </div>
             <div className="sheet-actions">
               <button className="btn-compile" disabled={planSheetBusy} onClick={() => void onRegeneratePlanFromSheet()}>
-                {planSheetBusy ? "Regenerating" : "Regenerate"}
+                {planSheetBusy ? <DitherText source="REGENERATING PLAN" /> : "Regenerate"}
               </button>
               <button className="btn-compile" onClick={() => void onCopyPlan()}>
                 Copy

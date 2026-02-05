@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { DitherText } from "@/components/dither-text";
 import { RunResult, TargetAgent } from "@/lib/models";
 
 type Props = {
@@ -100,7 +101,9 @@ export function PlanPage({ runId }: Props): React.ReactElement {
     return (
       <main className="intake-shell">
         <section className="intake-card">
-          <h1 className="intake-title">Loading Plan</h1>
+          <h1 className="intake-title">
+            <DitherText source="LOADING PLAN" />
+          </h1>
         </section>
       </main>
     );
@@ -127,7 +130,7 @@ export function PlanPage({ runId }: Props): React.ReactElement {
           </select>
 
           <button className="btn-compile" onClick={() => void regenerate()} disabled={busy}>
-            {busy ? "Regenerating" : "Regenerate"}
+            {busy ? <DitherText source="REGENERATING PLAN" /> : "Regenerate"}
           </button>
           <button className="btn-compile" onClick={() => void copyPlan()}>
             Copy
