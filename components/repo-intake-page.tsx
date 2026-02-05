@@ -19,6 +19,7 @@ const stagedTemplate: LocalStage[] = [
   { id: "intent", label: "Intent extraction", status: "pending" },
   { id: "plan", label: "Plan compilation", status: "pending" }
 ];
+const ANALYSIS_COMPLETE_SOUND_KEY = "mimickit:play-analysis-complete-sound";
 
 export function RepoIntakePage(): React.ReactElement {
   const router = useRouter();
@@ -60,6 +61,9 @@ export function RepoIntakePage(): React.ReactElement {
         }))
       );
 
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(ANALYSIS_COMPLETE_SOUND_KEY, "1");
+      }
       router.push(`/workspace/${json.id}`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unexpected error");
@@ -80,7 +84,7 @@ export function RepoIntakePage(): React.ReactElement {
 
   return (
     <main className="intake-shell">
-      <section className="intake-card">
+      <section className={`intake-card ${busy ? "intake-card-loading" : ""}`} aria-busy={busy}>
         <p className="u-caps u-faint">MimicKit / Behavioral Transpiler</p>
         <h1 className="intake-title">Repository Intake</h1>
         <p className="intake-subtitle">
@@ -167,6 +171,23 @@ export function RepoIntakePage(): React.ReactElement {
         </div>
 
         {error ? <p className="error-text">{error}</p> : null}
+
+        {busy ? (
+          <div className="intake-loading-overlay" role="status" aria-live="polite">
+            <div className="intake-loading-chip">
+              <div className="stack-loading-line">
+                <span className="stack-loading-dot" />
+                <DitherText source="ANALYZING REPOSITORY" className="intake-loading-main" />
+              </div>
+              <div className="intake-loading-lines">
+                <DitherText source="SCANNING FILE TREE" className="intake-loading-step" />
+                <DitherText source="DETECTING STACK SIGNALS" className="intake-loading-step" />
+                <DitherText source="EXTRACTING ARCHITECTURE + INTENT" className="intake-loading-step" />
+                <DitherText source="COMPILING EXECUTABLE PLAN" className="intake-loading-step" />
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );

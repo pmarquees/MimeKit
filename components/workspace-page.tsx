@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DitherText } from "@/components/dither-text";
 import { techRegistry } from "@/lib/data/tech-registry";
 import { IntentSpec, RunResult, StackCategory, TargetAgent } from "@/lib/models";
@@ -17,9 +17,26 @@ type NodeLayout = {
   height: number;
 };
 
+type PanState = {
+  x: number;
+  y: number;
+};
+
+type NodeDragState = {
+  pointerId: number;
+  nodeId: string;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+  moved: boolean;
+};
+
 const STACK_ORDER: StackCategory[] = ["frontend", "backend", "db", "auth", "infra", "language"];
 const CARD_BACKGROUNDS = ["card-bg-2", "card-bg-3", "card-bg-4", "card-bg-5", "card-bg-1"];
 const STACK_DITHER_SOURCE = "REWRITING STACK MAP";
+const ANALYSIS_COMPLETE_SOUND_KEY = "mimickit:play-analysis-complete-sound";
+const ANALYSIS_COMPLETE_SOUND_URL = "/sounds/mixkit-positive-notification-951.wav";
 
 function titleForCategory(category: StackCategory): string {
   switch (category) {
@@ -122,9 +139,21 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
   const [correctedLowConfidence, setCorrectedLowConfidence] = useState<Record<string, boolean>>({});
   const [stackSwapLoading, setStackSwapLoading] = useState(false);
   const [graphModalOpen, setGraphModalOpen] = useState(false);
+  const [graphPan, setGraphPan] = useState<PanState>({ x: 140, y: 90 });
+  const [graphPanning, setGraphPanning] = useState(false);
+  const [expandedNodeLayouts, setExpandedNodeLayouts] = useState<Record<string, NodeLayout>>({});
   const [planSheetOpen, setPlanSheetOpen] = useState(false);
   const [planSheetBusy, setPlanSheetBusy] = useState(false);
   const [planSheetNotice, setPlanSheetNotice] = useState<string | null>(null);
+  const playedCompletionSoundRef = useRef(false);
+  const graphPanRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origin: PanState;
+  } | null>(null);
+  const nodeDragRef = useRef<NodeDragState | null>(null);
+  const suppressNodeClickRef = useRef<string | null>(null);
 
   useEffect(() => {
     async function loadRun(): Promise<void> {
@@ -142,6 +171,41 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
 
     void loadRun();
   }, [runId]);
+
+  useEffect(() => {
+    if (!graphModalOpen) {
+      graphPanRef.current = null;
+      nodeDragRef.current = null;
+      setGraphPanning(false);
+      return;
+    }
+
+    if (!run) return;
+
+    setGraphPan({ x: 140, y: 90 });
+    const nextLayouts: Record<string, NodeLayout> = {};
+    run.architecture.components.forEach((component, index) => {
+      nextLayouts[component.id] = { ...layoutFor(index) };
+    });
+    if (!selectedComponentId && run.architecture.components[0]) {
+      setSelectedComponentId(run.architecture.components[0].id);
+    }
+    setExpandedNodeLayouts(nextLayouts);
+  }, [graphModalOpen, run, selectedComponentId]);
+
+  useEffect(() => {
+    if (!run || playedCompletionSoundRef.current) return;
+    if (typeof window === "undefined") return;
+
+    const shouldPlay = window.sessionStorage.getItem(ANALYSIS_COMPLETE_SOUND_KEY) === "1";
+    if (!shouldPlay) return;
+
+    window.sessionStorage.removeItem(ANALYSIS_COMPLETE_SOUND_KEY);
+    playedCompletionSoundRef.current = true;
+
+    const audio = new Audio(ANALYSIS_COMPLETE_SOUND_URL);
+    void audio.play().catch(() => undefined);
+  }, [run]);
 
   const selectedComponent = useMemo(() => {
     if (!run || !selectedComponentId) return run?.architecture.components[0] ?? null;
@@ -163,6 +227,133 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
     }
     return map;
   }, [positioned]);
+
+  const expandedPositioned = useMemo(() => {
+    return positioned.map(({ component, layout }) => ({
+      component,
+      layout: expandedNodeLayouts[component.id] ?? layout
+    }));
+  }, [expandedNodeLayouts, positioned]);
+
+  const expandedLayoutMap = useMemo(() => {
+    const map = new Map<string, NodeLayout>();
+    for (const item of expandedPositioned) {
+      map.set(item.component.id, item.layout);
+    }
+    return map;
+  }, [expandedPositioned]);
+
+  const expandedGraphStageSize = useMemo(() => {
+    if (!expandedPositioned.length) return { width: 1600, height: 1100 };
+
+    let maxX = 0;
+    let maxY = 0;
+    for (const item of expandedPositioned) {
+      maxX = Math.max(maxX, item.layout.x + item.layout.width);
+      maxY = Math.max(maxY, item.layout.y + item.layout.height);
+    }
+
+    return {
+      width: Math.max(1600, maxX + 420),
+      height: Math.max(1100, maxY + 420)
+    };
+  }, [expandedPositioned]);
+
+  function onExpandedGraphPointerDown(event: React.PointerEvent<HTMLDivElement>): void {
+    const target = event.target as HTMLElement;
+    if (target.closest(".node-button")) return;
+
+    graphPanRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      origin: graphPan
+    };
+    setGraphPanning(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onExpandedGraphPointerMove(event: React.PointerEvent<HTMLDivElement>): void {
+    const active = graphPanRef.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+
+    setGraphPan({
+      x: active.origin.x + (event.clientX - active.startX),
+      y: active.origin.y + (event.clientY - active.startY)
+    });
+  }
+
+  function onExpandedGraphPointerEnd(event: React.PointerEvent<HTMLDivElement>): void {
+    const active = graphPanRef.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+
+    graphPanRef.current = null;
+    setGraphPanning(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function onExpandedNodePointerDown(event: React.PointerEvent<HTMLButtonElement>, nodeId: string): void {
+    const source = expandedLayoutMap.get(nodeId) ?? layoutMap.get(nodeId);
+    if (!source) return;
+
+    nodeDragRef.current = {
+      pointerId: event.pointerId,
+      nodeId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: source.x,
+      originY: source.y,
+      moved: false
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.stopPropagation();
+  }
+
+  function onExpandedNodePointerMove(event: React.PointerEvent<HTMLButtonElement>, nodeId: string): void {
+    const active = nodeDragRef.current;
+    if (!active || active.pointerId !== event.pointerId || active.nodeId !== nodeId) return;
+
+    const deltaX = event.clientX - active.startX;
+    const deltaY = event.clientY - active.startY;
+    if (!active.moved && (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2)) {
+      active.moved = true;
+    }
+
+    setExpandedNodeLayouts((prev) => {
+      const current = prev[nodeId] ?? layoutMap.get(nodeId);
+      if (!current) return prev;
+      return {
+        ...prev,
+        [nodeId]: {
+          ...current,
+          x: active.originX + deltaX,
+          y: active.originY + deltaY
+        }
+      };
+    });
+  }
+
+  function onExpandedNodePointerEnd(event: React.PointerEvent<HTMLButtonElement>, nodeId: string): void {
+    const active = nodeDragRef.current;
+    if (!active || active.pointerId !== event.pointerId || active.nodeId !== nodeId) return;
+
+    suppressNodeClickRef.current = active.moved ? nodeId : null;
+    nodeDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function onGraphNodeClick(nodeId: string): void {
+    if (suppressNodeClickRef.current === nodeId) {
+      suppressNodeClickRef.current = null;
+      return;
+    }
+
+    setSelectedComponentId(nodeId);
+  }
 
   async function recompile(nextIntent: IntentSpec): Promise<void> {
     setBusyLabel("Recompiling plan");
@@ -282,14 +473,14 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
 
   function onDownloadPlan(): void {
     if (!run) return;
-    const blob = new Blob([run.plan.prompt], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob([run.plan.prompt], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `mimickit-plan-${runId}.txt`;
+    link.download = "Plan.md";
     link.click();
     URL.revokeObjectURL(url);
-    setPlanSheetNotice("Plan downloaded.");
+    setPlanSheetNotice("Plan.md downloaded.");
   }
 
   async function onRegeneratePlanFromSheet(): Promise<void> {
@@ -333,19 +524,20 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
     );
   }
 
-  const renderGraphCanvas = (isExpanded = false): React.ReactElement => (
-    <div className={`graph-canvas ${isExpanded ? "graph-canvas-expanded" : ""}`}>
+  const renderGraphNodes = (isExpanded = false): React.ReactElement => (
+    <>
       <svg className="connector">
         {run.architecture.edges.map((edge, index) => {
-          const from = layoutMap.get(edge.from);
-          const to = layoutMap.get(edge.to);
+          const map = isExpanded ? expandedLayoutMap : layoutMap;
+          const from = map.get(edge.from);
+          const to = map.get(edge.to);
           if (!from || !to) return null;
 
           return <path key={`${edge.from}-${edge.to}-${index}`} d={pathBetween(from, to)} />;
         })}
       </svg>
 
-      {positioned.map(({ component, layout }, index) => (
+      {(isExpanded ? expandedPositioned : positioned).map(({ component, layout }, index) => (
         <button
           key={component.id}
           className={`node node-button ${selectedComponent?.id === component.id ? "node-selected" : ""}`}
@@ -354,23 +546,55 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
             left: layout.x,
             background: index % 2 === 1 ? "var(--bg-hakuji)" : "#fff"
           }}
-          onClick={() => setSelectedComponentId(component.id)}
+          onClick={() => onGraphNodeClick(component.id)}
+          onPointerDown={isExpanded ? (event) => onExpandedNodePointerDown(event, component.id) : undefined}
+          onPointerMove={isExpanded ? (event) => onExpandedNodePointerMove(event, component.id) : undefined}
+          onPointerUp={isExpanded ? (event) => onExpandedNodePointerEnd(event, component.id) : undefined}
+          onPointerCancel={isExpanded ? (event) => onExpandedNodePointerEnd(event, component.id) : undefined}
+          aria-label={`Open details for ${component.name}`}
         >
           <div className="jp-text">{component.role.toUpperCase()}</div>
           <div className="node-label u-caps">{component.role.split(" ")[0]}</div>
           <div className="node-value">{component.name}</div>
         </button>
       ))}
-    </div>
+    </>
   );
+
+  const renderGraphCanvas = (isExpanded = false): React.ReactElement => {
+    if (!isExpanded) {
+      return <div className="graph-canvas">{renderGraphNodes(false)}</div>;
+    }
+
+    return (
+      <div
+        className={`graph-canvas graph-canvas-expanded ${graphPanning ? "graph-canvas-panning" : ""}`}
+        onPointerDown={onExpandedGraphPointerDown}
+        onPointerMove={onExpandedGraphPointerMove}
+        onPointerUp={onExpandedGraphPointerEnd}
+        onPointerCancel={onExpandedGraphPointerEnd}
+      >
+        <div
+          className="graph-stage"
+          style={{
+            width: expandedGraphStageSize.width,
+            height: expandedGraphStageSize.height,
+            transform: `translate(${graphPan.x}px, ${graphPan.y}px)`
+          }}
+        >
+          {renderGraphNodes(true)}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
       <div className="layout-container">
         <header className="app-header">
         <div className="header-brand">
-          <div className="u-caps u-bold">MimicKit UI</div>
-          <div className="u-caps u-muted">[Blueprint Tool]</div>
+          <div className="u-caps u-bold">MimeKit</div>
+          <div className="u-caps u-muted">[Compiling code into intent]</div>
           <div className="u-caps u-faint">v.1.0.2 / 2026</div>
         </div>
 
@@ -622,7 +846,23 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
                 Close
               </button>
             </div>
-            {renderGraphCanvas(true)}
+            <div className="graph-modal-body">
+              <div className="graph-modal-canvas-wrap">{renderGraphCanvas(true)}</div>
+              <aside className="graph-modal-sidebar" aria-live="polite">
+                <div className="u-caps u-muted">Node details</div>
+                {selectedComponent ? (
+                  <>
+                    <p className="inspector-title">{selectedComponent.name}</p>
+                    <p className="inspector-line">Role: {selectedComponent.role}</p>
+                    <p className="inspector-line">Tech: {selectedComponent.tech.join(", ")}</p>
+                    <p className="inspector-line">Inputs: {selectedComponent.inputs.join(", ")}</p>
+                    <p className="inspector-line">Outputs: {selectedComponent.outputs.join(", ")}</p>
+                  </>
+                ) : (
+                  <p className="inspector-line">Click a node to view details.</p>
+                )}
+              </aside>
+            </div>
           </section>
         </div>
       ) : null}

@@ -103,6 +103,70 @@ select {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  position: relative;
+  overflow: hidden;
+  transition: filter 0.18s ease, opacity 0.18s ease;
+}
+
+.intake-card-loading > *:not(.intake-loading-overlay) {
+  opacity: 0.42;
+  filter: saturate(0.7);
+  pointer-events: none;
+}
+
+.intake-card-loading .intake-title,
+.intake-card-loading .intake-subtitle,
+.intake-card-loading .form-label,
+.intake-card-loading .stage-row,
+.intake-card-loading .auth-text {
+  animation: dither-flicker 0.16s steps(2, end) infinite;
+}
+
+.intake-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.84),
+    rgba(255, 255, 255, 0.84) 8px,
+    rgba(248, 251, 248, 0.92) 8px,
+    rgba(248, 251, 248, 0.92) 16px
+  );
+}
+
+.intake-loading-chip {
+  width: min(520px, 100%);
+  border: 1px solid var(--grid-line);
+  background: #fff;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.06);
+  padding: 14px 16px;
+}
+
+.intake-loading-main {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  animation: dither-flicker 0.16s steps(2, end) infinite;
+}
+
+.intake-loading-lines {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.intake-loading-step {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  animation: dither-flicker 0.16s steps(2, end) infinite;
 }
 
 .intake-title {
@@ -351,6 +415,7 @@ select {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  overflow: visible;
   z-index: 0;
 }
 
@@ -728,7 +793,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 10px;
 }
 
 .graph-modal-backdrop {
@@ -741,8 +806,8 @@ select {
 .graph-modal-panel {
   position: relative;
   z-index: 1;
-  width: min(1100px, 95vw);
-  height: min(82vh, 860px);
+  width: min(1600px, 98vw);
+  height: min(94vh, 980px);
   border: 1px solid var(--grid-line);
   background: #fff;
   display: flex;
@@ -760,10 +825,52 @@ select {
   border-bottom: 1px solid var(--grid-line);
 }
 
+.graph-modal-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  min-height: 0;
+  flex: 1;
+}
+
+.graph-modal-canvas-wrap {
+  border-right: 1px solid var(--grid-line);
+  min-height: 0;
+}
+
+.graph-modal-sidebar {
+  padding: 12px;
+  background: #fff;
+  overflow-y: auto;
+}
+
 .graph-canvas-expanded {
   min-height: 100%;
   flex: 1;
-  background-size: 44px 44px;
+  position: relative;
+  overflow: hidden;
+  background-color: #fcfcfb;
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: -1px -1px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.graph-canvas-panning {
+  cursor: grabbing;
+}
+
+.graph-canvas-expanded .node-button {
+  cursor: move;
+  touch-action: none;
+}
+
+.graph-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
 }
 
 .sheet-root {
@@ -969,7 +1076,21 @@ select {
 
   .graph-modal-panel {
     width: 100%;
-    height: min(82vh, 720px);
+    height: 95vh;
+  }
+
+  .graph-modal-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .graph-modal-canvas-wrap {
+    border-right: none;
+    border-bottom: 1px solid var(--grid-line);
+  }
+
+  .graph-modal-sidebar {
+    max-height: 180px;
   }
 
   .sheet-panel {
@@ -983,6 +1104,8 @@ select {
   .mk-page-root,
   .stack-loading-dot,
   .stack-loading-text,
+  .intake-loading-main,
+  .intake-loading-step,
   .boot-text,
   .graph-modal-panel,
   .sheet-panel,

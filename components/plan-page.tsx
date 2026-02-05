@@ -73,14 +73,14 @@ export function PlanPage({ runId }: Props): React.ReactElement {
 
   function downloadPlan(): void {
     if (!run) return;
-    const blob = new Blob([run.plan.prompt], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob([run.plan.prompt], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `mimickit-plan-${runId}.txt`;
+    link.download = "Plan.md";
     link.click();
     URL.revokeObjectURL(url);
-    setStatus("Downloaded plan.");
+    setStatus("Downloaded Plan.md.");
   }
 
   if (error && !run) {

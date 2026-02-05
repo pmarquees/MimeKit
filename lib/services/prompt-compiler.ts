@@ -31,6 +31,26 @@ function safeList(items: string[]): string[] {
   return items.length ? items : ["No explicit items detected; define during implementation with documented assumptions."];
 }
 
+function markdownBullets(items: string[]): string {
+  return items.map((item) => `- ${item}`).join("\n");
+}
+
+function markdownNumbers(items: string[]): string {
+  return items.map((item, index) => `${index + 1}. ${item}`).join("\n");
+}
+
+function unique(items: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of items) {
+    const key = item.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(key);
+  }
+  return result;
+}
+
 function parsePackageDeps(snapshot: RepoSnapshot): Record<string, string> {
   const file = snapshot.files.find((item) => item.path.endsWith("package.json"));
   if (!file) return {};
@@ -129,36 +149,190 @@ function normalizeRouteSegments(raw: string): string {
   return `/${filtered.join("/")}`.replace(/\/+/g, "/") || "/";
 }
 
-function routeLayoutForPath(path: string): string {
-  const lower = path.toLowerCase();
-  if (path === "/") {
-    return "Primary shell layout with top navigation, summary hero area, and action-focused content blocks.";
+type RouteContext = {
+  path: string;
+  sourcePath?: string;
+  sourceContent?: string;
+};
+
+type RouteSignals = {
+  hasFloatingMenu: boolean;
+  hasSidebar: boolean;
+  hasStickyHeader: boolean;
+  hasDialogOrSheet: boolean;
+  hasCommandPalette: boolean;
+  hasDataGridOrTable: boolean;
+  hasChart: boolean;
+};
+
+function normalizeSegment(segment: string): string {
+  return segment.replace(/^\[|\]$/g, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+
+function routeSegments(path: string): string[] {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => normalizeSegment(segment))
+    .filter(Boolean);
+}
+
+function hasRouteSegment(path: string, variants: string[]): boolean {
+  const segments = routeSegments(path);
+  const normalized = variants.map((item) => normalizeSegment(item));
+  return normalized.some((variant) => segments.includes(variant));
+}
+
+function routeSignalsFromContent(content?: string): RouteSignals {
+  const source = content ?? "";
+  return {
+    hasFloatingMenu:
+      /fixed[^"'\n]*\bbottom-\d+/i.test(source) ||
+      /fixed[^"'\n]*\bright-\d+/i.test(source) ||
+      /\b(floating|speed\s*dial|fab)\b/i.test(source) ||
+      /\b(DropdownMenu|Popover)\b/.test(source),
+    hasSidebar: /<aside\b/i.test(source) || /\b(sidebar|side-nav|drawer)\b/i.test(source) || /\bw-(64|72|80)\b/.test(source),
+    hasStickyHeader: /\bsticky\s+top-0\b/.test(source) || /<header\b/i.test(source) || /\b(navbar|topbar)\b/i.test(source),
+    hasDialogOrSheet: /\b(Dialog|Sheet|Drawer|Modal)\b/.test(source),
+    hasCommandPalette: /\b(Command|SearchDialog|CommandDialog)\b/.test(source),
+    hasDataGridOrTable: /\b(table|data\s*grid|DataTable|Table)\b/i.test(source),
+    hasChart: /\b(Recharts|Chart|LineChart|BarChart|PieChart)\b/.test(source)
+  };
+}
+
+function extractComponentNames(content?: string): string[] {
+  if (!content) return [];
+  const matches = content.matchAll(/<([A-Z][A-Za-z0-9]+)/g);
+  const names = new Set<string>();
+  for (const match of matches) {
+    const name = match[1];
+    if (["Fragment", "Suspense", "ErrorBoundary", "Provider"].includes(name)) continue;
+    names.add(name);
+    if (names.size >= 8) break;
   }
-  if (lower.includes("dashboard") || lower.includes("admin")) {
-    return "Dense dashboard layout with stats rail, filter controls, and data grid/table body.";
+  return [...names];
+}
+
+function appRouteFromFilePath(path: string, prefix: "app/" | "src/app/"): string {
+  const relative = path.slice(prefix.length);
+  const routePart = relative.replace(/(^|\/)page\.(tsx|ts|jsx|js|mdx)$/, "");
+  return normalizeRouteSegments(routePart);
+}
+
+function pagesRouteFromFilePath(path: string): string {
+  const routePath = path
+    .replace(/^pages\//, "")
+    .replace(/\.(tsx|ts|jsx|js)$/, "")
+    .replace(/\/index$/, "")
+    .replace(/^index$/, "");
+  return normalizeRouteSegments(routePath);
+}
+
+function collectRouteContexts(snapshot: RepoSnapshot): RouteContext[] {
+  const contexts = new Map<string, RouteContext>();
+  const sampleByPath = new Map(snapshot.files.map((file) => [file.path, file.content]));
+
+  const upsert = (routePath: string, sourcePath: string): void => {
+    const existing = contexts.get(routePath);
+    if (existing) {
+      if (!existing.sourcePath) {
+        existing.sourcePath = sourcePath;
+      }
+      if (!existing.sourceContent && sampleByPath.has(sourcePath)) {
+        existing.sourceContent = sampleByPath.get(sourcePath);
+      }
+      return;
+    }
+
+    contexts.set(routePath, {
+      path: routePath,
+      sourcePath,
+      sourceContent: sampleByPath.get(sourcePath)
+    });
+  };
+
+  for (const item of snapshot.fileTree) {
+    const filePath = item.path;
+    if (item.type !== "blob") continue;
+
+    if (filePath.startsWith("app/") && /(^|\/)page\.(tsx|ts|jsx|js|mdx)$/.test(filePath)) {
+      upsert(appRouteFromFilePath(filePath, "app/"), filePath);
+      continue;
+    }
+
+    if (filePath.startsWith("src/app/") && /(^|\/)page\.(tsx|ts|jsx|js|mdx)$/.test(filePath)) {
+      upsert(appRouteFromFilePath(filePath, "src/app/"), filePath);
+      continue;
+    }
+
+    if (filePath.startsWith("pages/") && /\.(tsx|ts|jsx|js)$/.test(filePath)) {
+      if (filePath.includes("/api/")) continue;
+      const filename = filePath.split("/").pop() ?? "";
+      if (filename.startsWith("_")) continue;
+      upsert(pagesRouteFromFilePath(filePath), filePath);
+    }
   }
-  if (lower.includes("setting") || lower.includes("profile")) {
-    return "Two-column settings layout with section navigation and form-heavy detail panel.";
+
+  if (!contexts.size) {
+    contexts.set("/", { path: "/" });
   }
-  if (path.includes("[") || lower.includes("detail") || lower.includes("item")) {
-    return "Detail layout with context header, segmented content sections, and related actions sidebar.";
+
+  return [...contexts.values()]
+    .sort((a, b) => {
+      if (a.path === "/") return -1;
+      if (b.path === "/") return 1;
+      const aInspected = a.sourceContent ? 0 : 1;
+      const bInspected = b.sourceContent ? 0 : 1;
+      if (aInspected !== bInspected) return aInspected - bInspected;
+      return a.path.localeCompare(b.path);
+    })
+    .slice(0, 14);
+}
+
+function routeLayoutForPath(path: string, sourceContent?: string): string {
+  const signals = routeSignalsFromContent(sourceContent);
+  const hints: string[] = [];
+
+  if (signals.hasSidebar) {
+    hints.push("Split shell with persistent side navigation and independent main-content scrolling.");
   }
-  if (lower.includes("auth") || lower.includes("login") || lower.includes("sign")) {
-    return "Narrow auth layout centered on form card, validation messaging, and alternate auth providers.";
+  if (signals.hasFloatingMenu) {
+    hints.push(
+      "Include floating action/command menu fixed to bottom-right with elevated surface, quick actions, and compact trigger."
+    );
   }
-  return "Standard page layout with title/actions header, main content region, and contextual feedback area.";
+  if (signals.hasStickyHeader) {
+    hints.push("Use sticky top header for context, filters, and primary page actions.");
+  }
+  if (signals.hasCommandPalette) {
+    hints.push("Support keyboard-first command surface (Cmd/Ctrl+K) with overlay search/navigation.");
+  }
+
+  if (hasRouteSegment(path, ["analytics", "dashboard", "report"])) {
+    hints.push("Analytics-oriented content stack: KPI strip, filter controls, and dense chart/table region.");
+  }
+  if (path.includes("[") || hasRouteSegment(path, ["post", "project", "profile", "detail"])) {
+    hints.push("Detail composition: contextual hero/header, body stream, and related actions aligned in secondary rail.");
+  }
+  if (hasRouteSegment(path, ["auth", "login", "signin", "signup"])) {
+    hints.push("Constrained-width auth card with explicit validation, recovery, and identity-provider actions.");
+  }
+  if (!hints.length) {
+    hints.push("Top action bar + content-first body with contextual controls and explicit empty/loading/error states.");
+  }
+
+  return hints.slice(0, 3).join(" ");
 }
 
 function routePurposeForPath(path: string, intent: IntentSpec): string {
-  const lower = path.toLowerCase();
-  if (path === "/") return "Entry point for navigation and core task initiation.";
-  if (lower.includes("auth") || lower.includes("login") || lower.includes("sign")) {
-    return "Handles authentication, session initiation, and access control transitions.";
+  if (path === "/") return "Entry point for navigation and primary workflow kickoff.";
+  if (hasRouteSegment(path, ["auth", "login", "signin", "signup"])) {
+    return "Handles authentication, session initialization, and access transitions.";
   }
-  if (lower.includes("dashboard")) {
+  if (hasRouteSegment(path, ["dashboard", "analytics", "report"])) {
     return "Provides operational overview and status monitoring for key system outputs.";
   }
-  if (lower.includes("api")) {
+  if (hasRouteSegment(path, ["api"])) {
     return "Exposes server interface for structured requests and domain operations.";
   }
 
@@ -170,32 +344,43 @@ function routePurposeForPath(path: string, intent: IntentSpec): string {
   return "Supports primary business flow inferred from system intent.";
 }
 
-function routeComponentsForPath(path: string): string[] {
-  const lower = path.toLowerCase();
+function routeComponentsForPath(path: string, sourceContent?: string): string[] {
+  const signals = routeSignalsFromContent(sourceContent);
+  const fromFile = extractComponentNames(sourceContent);
+  const structural: string[] = [];
+
+  if (signals.hasStickyHeader) structural.push("StickyHeader");
+  if (signals.hasSidebar) structural.push("SideNavigation");
+  if (signals.hasFloatingMenu) structural.push("FloatingActionMenu");
+  if (signals.hasCommandPalette) structural.push("CommandPalette");
+  if (signals.hasDialogOrSheet) structural.push("DialogOrSheet");
+  if (signals.hasDataGridOrTable) structural.push("DataTable");
+  if (signals.hasChart) structural.push("AnalyticsChart");
+
   if (path === "/") {
-    return ["Top nav", "hero/overview block", "primary CTA group", "summary cards"];
+    structural.push("TopNav", "HeroOverview", "PrimaryActionCluster");
   }
-  if (lower.includes("dashboard")) {
-    return ["KPI cards", "filter bar", "table/grid", "activity timeline"];
+  if (hasRouteSegment(path, ["dashboard", "analytics"])) {
+    structural.push("KPIGrid", "FilterBar");
   }
-  if (lower.includes("auth") || lower.includes("login") || lower.includes("sign")) {
-    return ["Auth form", "field validation", "submit controls", "fallback/error messaging"];
+  if (hasRouteSegment(path, ["auth", "login", "signin", "signup"])) {
+    structural.push("AuthForm", "ValidationMessage");
   }
-  if (lower.includes("setting") || lower.includes("profile")) {
-    return ["Section tabs", "editable forms", "save/cancel actions", "success/error alerts"];
+  if (hasRouteSegment(path, ["setting", "profile"])) {
+    structural.push("SectionTabs", "EditableForm");
   }
   if (path.includes("[")) {
-    return ["Context header", "detail panels", "related records", "secondary actions"];
+    structural.push("ContextHeader", "DetailPanels");
   }
-  return ["Page header", "content section", "interactive controls", "feedback states"];
+
+  const components = unique([...fromFile.slice(0, 5), ...structural]).slice(0, 8);
+  if (components.length) return components;
+  return ["PageHeader", "PrimaryContent", "ActionControls", "FeedbackState"];
 }
 
-function routeLogicForPath(path: string, intent: IntentSpec): string[] {
-  const keywords = path
-    .toLowerCase()
-    .replace(/[^a-z0-9/]/g, "")
-    .split("/")
-    .filter(Boolean);
+function routeLogicForPath(path: string, intent: IntentSpec, sourceContent?: string): string[] {
+  const keywords = routeSegments(path);
+  const signals = routeSignalsFromContent(sourceContent);
 
   const matchedRules = intent.business_rules.filter((rule) =>
     keywords.some((keyword) => keyword.length > 2 && rule.toLowerCase().includes(keyword))
@@ -205,56 +390,31 @@ function routeLogicForPath(path: string, intent: IntentSpec): string[] {
     keywords.some((keyword) => keyword.length > 2 && flow.toLowerCase().includes(keyword))
   );
 
-  return safeList([...matchedFlows.slice(0, 2), ...matchedRules.slice(0, 2)]);
+  const layoutAwareLogic: string[] = [];
+  if (signals.hasFloatingMenu) {
+    layoutAwareLogic.push(
+      "Primary create/action flow must be reachable from floating menu without disrupting current reading context."
+    );
+  }
+  if (signals.hasCommandPalette) {
+    layoutAwareLogic.push("Keyboard command flow should mirror visible navigation and action affordances.");
+  }
+  if (signals.hasDataGridOrTable) {
+    layoutAwareLogic.push("Table/list interactions should preserve sort/filter state in URL or persisted view state.");
+  }
+
+  return safeList([...matchedFlows.slice(0, 2), ...matchedRules.slice(0, 2), ...layoutAwareLogic]).slice(0, 5);
 }
 
 function inferRouteMap(snapshot: RepoSnapshot, intent: IntentSpec): RoutePlan[] {
-  const routePaths = new Set<string>();
-
-  for (const item of snapshot.fileTree) {
-    const path = item.path;
-
-    if (path.startsWith("app/") && /\/page\.(tsx|ts|jsx|js|mdx)$/.test(path)) {
-      const routePath = path
-        .replace(/^app\//, "")
-        .replace(/\/page\.(tsx|ts|jsx|js|mdx)$/, "");
-      routePaths.add(normalizeRouteSegments(routePath));
-    }
-
-    if (path.startsWith("src/app/") && /\/page\.(tsx|ts|jsx|js|mdx)$/.test(path)) {
-      const routePath = path
-        .replace(/^src\/app\//, "")
-        .replace(/\/page\.(tsx|ts|jsx|js|mdx)$/, "");
-      routePaths.add(normalizeRouteSegments(routePath));
-    }
-
-    if (path.startsWith("pages/") && /\.(tsx|ts|jsx|js)$/.test(path)) {
-      if (path.includes("/api/")) continue;
-      const filename = path.split("/").pop() ?? "";
-      if (filename.startsWith("_")) continue;
-
-      const routePath = path
-        .replace(/^pages\//, "")
-        .replace(/\.(tsx|ts|jsx|js)$/, "")
-        .replace(/\/index$/, "");
-      routePaths.add(normalizeRouteSegments(routePath));
-    }
-  }
-
-  if (!routePaths.size) {
-    routePaths.add("/");
-  }
-
-  return [...routePaths]
-    .sort((a, b) => (a === "/" ? -1 : b === "/" ? 1 : a.localeCompare(b)))
-    .slice(0, 20)
-    .map((path) => ({
-      path,
-      purpose: routePurposeForPath(path, intent),
-      layout: routeLayoutForPath(path),
-      components: routeComponentsForPath(path),
-      logic: routeLogicForPath(path, intent)
-    }));
+  const contexts = collectRouteContexts(snapshot);
+  return contexts.map((route) => ({
+    path: route.path,
+    purpose: routePurposeForPath(route.path, intent),
+    layout: routeLayoutForPath(route.path, route.sourceContent),
+    components: routeComponentsForPath(route.path, route.sourceContent),
+    logic: routeLogicForPath(route.path, intent, route.sourceContent)
+  }));
 }
 
 function inferFunctionalityLogic(intent: IntentSpec): string[] {
@@ -461,50 +621,499 @@ function fallbackStructuredPlan(
   };
 }
 
-function renderRouteMap(routeMap: StructuredPlan["routeMap"]): string {
+function renderRoutePlanMarkdown(routeMap: StructuredPlan["routeMap"]): string {
   return routeMap
     .map(
-      (route, index) =>
-        `${index + 1}. ${route.path} | Purpose: ${route.purpose} | Layout: ${route.layout} | Components: ${route.components.join(", ")} | Logic: ${route.logic.join(" ; ")}`
+      (route) =>
+        [
+          `### \`${route.path}\``,
+          `- Purpose: ${route.purpose}`,
+          `- Layout: ${route.layout}`,
+          `- Components: ${route.components.join(", ")}`,
+          `- Functionality logic: ${route.logic.join(" | ")}`
+        ].join("\n")
     )
-    .join("\n");
+    .join("\n\n");
 }
 
-function renderDesignSystem(designSystem: DesignSystemPlan): string {
+type VisualTokens = {
+  bg: string;
+  surface: string;
+  surfaceAlt: string;
+  text: string;
+  textMuted: string;
+  border: string;
+  primary: string;
+  primaryHover: string;
+  accent: string;
+  success: string;
+  warning: string;
+  danger: string;
+};
+
+type RadiusScale = {
+  sm: number;
+  md: number;
+  lg: number;
+  xl: number;
+};
+
+type UiPatternSignals = {
+  hasFloatingMenu: boolean;
+  hasSidebar: boolean;
+  hasTopNav: boolean;
+  hasGlassSurface: boolean;
+  hasCommandPalette: boolean;
+  hasAnimationSignals: boolean;
+  prefersDark: boolean;
+};
+
+function snapshotSourceText(snapshot: RepoSnapshot): string {
+  return snapshot.files.map((file) => file.content).join("\n");
+}
+
+function detectUiPatternSignals(snapshot: RepoSnapshot): UiPatternSignals {
+  const text = snapshotSourceText(snapshot);
+  return {
+    hasFloatingMenu:
+      /fixed[^"'\n]*\bbottom-\d+/i.test(text) ||
+      /fixed[^"'\n]*\bright-\d+/i.test(text) ||
+      /\b(floating|speed\s*dial|fab)\b/i.test(text) ||
+      /\b(DropdownMenu|Popover)\b/.test(text),
+    hasSidebar: /<aside\b/i.test(text) || /\b(sidebar|side-nav|drawer)\b/i.test(text) || /\bw-(64|72|80)\b/.test(text),
+    hasTopNav: /\b(sticky\s+top-0|navbar|topbar)\b/i.test(text) || /<header\b/i.test(text),
+    hasGlassSurface: /\bbackdrop-blur\b/.test(text) || /bg-(white|black)\/\d{1,3}/.test(text),
+    hasCommandPalette: /\b(Command|SearchDialog|CommandDialog)\b/.test(text),
+    hasAnimationSignals: /\banimate-|transition-|duration-\d+\b/.test(text),
+    prefersDark: /\bdark:|data-theme=["']dark["']|bg-(slate|zinc|neutral|gray)-9\d{2}/.test(text)
+  };
+}
+
+function normalizeHex(input: string): string | null {
+  const raw = input.trim().toUpperCase();
+  if (!/^#[0-9A-F]{3,8}$/.test(raw)) return null;
+  if (raw.length === 4) {
+    return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`;
+  }
+  if (raw.length >= 7) return raw.slice(0, 7);
+  return null;
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const normalized = normalizeHex(hex) ?? "#000000";
+  const value = normalized.slice(1);
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16)
+  };
+}
+
+function luminance(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function isNeutralTone(hex: string): boolean {
+  const { r, g, b } = hexToRgb(hex);
+  return Math.max(r, g, b) - Math.min(r, g, b) < 16;
+}
+
+function pickVisualTokens(snapshot: RepoSnapshot): VisualTokens {
+  const ui = detectUiPatternSignals(snapshot);
+  const detected = unique(detectDominantHexColors(snapshot).map((value) => normalizeHex(value) ?? "").filter(Boolean));
+  const accents = detected.filter((hex) => !isNeutralTone(hex));
+  const neutrals = detected.filter((hex) => isNeutralTone(hex));
+
+  const darkDefaults: VisualTokens = {
+    bg: "#0B0F14",
+    surface: "#111827",
+    surfaceAlt: "#1F2937",
+    text: "#F3F4F6",
+    textMuted: "#9CA3AF",
+    border: "#374151",
+    primary: "#3B82F6",
+    primaryHover: "#2563EB",
+    accent: "#14B8A6",
+    success: "#22C55E",
+    warning: "#F59E0B",
+    danger: "#EF4444"
+  };
+
+  const lightDefaults: VisualTokens = {
+    bg: "#F8FAFC",
+    surface: "#FFFFFF",
+    surfaceAlt: "#EEF2F7",
+    text: "#111827",
+    textMuted: "#6B7280",
+    border: "#D1D5DB",
+    primary: "#2563EB",
+    primaryHover: "#1D4ED8",
+    accent: "#0EA5E9",
+    success: "#16A34A",
+    warning: "#D97706",
+    danger: "#DC2626"
+  };
+
+  const fallback = ui.prefersDark ? darkDefaults : lightDefaults;
+  const primary = accents[0] ?? fallback.primary;
+  const accent = accents[1] ?? fallback.accent;
+
+  const neutralByLum = [...neutrals].sort((a, b) => luminance(a) - luminance(b));
+  const bg = neutralByLum[0] ?? fallback.bg;
+  const surface = neutralByLum[Math.min(1, neutralByLum.length - 1)] ?? fallback.surface;
+  const surfaceAlt = neutralByLum[Math.min(2, neutralByLum.length - 1)] ?? fallback.surfaceAlt;
+
+  return {
+    ...fallback,
+    bg,
+    surface,
+    surfaceAlt,
+    primary,
+    accent
+  };
+}
+
+function pickRadiusScale(snapshot: RepoSnapshot): RadiusScale {
+  const parsed = detectRadiusSignals(snapshot)
+    .map((value) => {
+      const match = value.match(/(\d+(?:\.\d+)?)px/);
+      return match ? Number.parseFloat(match[1]) : null;
+    })
+    .filter((value): value is number => value !== null)
+    .sort((a, b) => a - b);
+
+  if (parsed.length >= 4) {
+    return {
+      sm: Math.round(parsed[0]),
+      md: Math.round(parsed[1]),
+      lg: Math.round(parsed[2]),
+      xl: Math.round(parsed[3])
+    };
+  }
+
+  return { sm: 8, md: 12, lg: 16, xl: 24 };
+}
+
+function designCssBlueprint(tokens: VisualTokens, radii: RadiusScale, ui: UiPatternSignals): string {
+  const shellLayout = ui.hasSidebar
+    ? `.app-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh; }\n.app-sidebar { position: sticky; top: 0; height: 100vh; border-right: 1px solid var(--color-border); background: var(--color-surface); }`
+    : `.app-shell { min-height: 100vh; background: var(--color-bg); }\n.app-header { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }`;
+
+  const floatingMenu = ui.hasFloatingMenu
+    ? `.floating-menu { position: fixed; right: 24px; bottom: 24px; display: flex; gap: 8px; padding: 10px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18); }`
+    : `.action-cluster { display: inline-flex; gap: 8px; align-items: center; }`;
+
   return [
-    `Visual direction: ${designSystem.visualDirection}`,
-    `Style language: ${designSystem.styleLanguage.join(" | ")}`,
-    `Color palette: ${designSystem.colorPalette.join(" | ")}`,
-    `Typography: ${designSystem.typography.join(" | ")}`,
-    `Radius system: ${designSystem.radiusSystem.join(" | ")}`,
-    `Page layout patterns: ${designSystem.pageLayoutPatterns.join(" | ")}`,
-    `Components: ${designSystem.components.join(" | ")}`,
-    `Motion: ${designSystem.motion.join(" | ")}`,
-    `Distinctive traits: ${designSystem.distinctiveTraits.join(" | ")}`,
-    `States and feedback: ${designSystem.statesAndFeedback.join(" | ")}`
+    "```css",
+    ":root {",
+    `  --color-bg: ${tokens.bg};`,
+    `  --color-surface: ${tokens.surface};`,
+    `  --color-surface-alt: ${tokens.surfaceAlt};`,
+    `  --color-text: ${tokens.text};`,
+    `  --color-text-muted: ${tokens.textMuted};`,
+    `  --color-border: ${tokens.border};`,
+    `  --color-primary: ${tokens.primary};`,
+    `  --color-primary-hover: ${tokens.primaryHover};`,
+    `  --color-accent: ${tokens.accent};`,
+    `  --color-success: ${tokens.success};`,
+    `  --color-warning: ${tokens.warning};`,
+    `  --color-danger: ${tokens.danger};`,
+    `  --radius-sm: ${radii.sm}px;`,
+    `  --radius-md: ${radii.md}px;`,
+    `  --radius-lg: ${radii.lg}px;`,
+    `  --radius-xl: ${radii.xl}px;`,
+    "}",
+    "",
+    ".btn-primary {",
+    "  border: 1px solid transparent;",
+    "  background: var(--color-primary);",
+    "  color: #ffffff;",
+    "  border-radius: var(--radius-md);",
+    "  padding: 10px 14px;",
+    "  font-weight: 600;",
+    "  transition: transform 120ms ease, background-color 120ms ease;",
+    "}",
+    ".btn-primary:hover { background: var(--color-primary-hover); transform: translateY(-1px); }",
+    ".btn-secondary {",
+    "  border: 1px solid var(--color-border);",
+    "  background: var(--color-surface-alt);",
+    "  color: var(--color-text);",
+    "  border-radius: var(--radius-md);",
+    "  padding: 10px 14px;",
+    "}",
+    ".btn-ghost {",
+    "  border: 1px solid transparent;",
+    "  background: transparent;",
+    "  color: var(--color-text-muted);",
+    "  border-radius: var(--radius-sm);",
+    "  padding: 8px 12px;",
+    "}",
+    shellLayout,
+    floatingMenu,
+    ".surface-card { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }",
+    ".input { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-alt); color: var(--color-text); }",
+    "@keyframes menu-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }",
+    "```"
   ].join("\n");
 }
 
-function renderPrompt(structured: StructuredPlan, targetAgent: TargetAgent): string {
-  const numbered = (title: string, body: string) => `${title}\n${body}\n`;
-  const list = (items: string[]) => items.map((item, i) => `${i + 1}. ${item}`).join("\n");
+function renderDesignSystemMarkdown(designSystem: DesignSystemPlan, snapshot: RepoSnapshot): string {
+  const tokens = pickVisualTokens(snapshot);
+  const radii = pickRadiusScale(snapshot);
+  const ui = detectUiPatternSignals(snapshot);
+
+  const layoutContract: string[] = [];
+  if (ui.hasSidebar) {
+    layoutContract.push("Preserve left navigation shell instead of replacing with full-height sidebar alternatives unless original uses it.");
+  }
+  if (ui.hasFloatingMenu) {
+    layoutContract.push(
+      "Preserve floating action/menu behavior (bottom-right fixed, elevated, quick-access) and avoid replacing it with static side navigation."
+    );
+  }
+  if (ui.hasTopNav) {
+    layoutContract.push("Keep sticky top navigation/action bar behavior to preserve browsing context during scroll.");
+  }
+  if (ui.hasCommandPalette) {
+    layoutContract.push("Retain keyboard command palette entry points (Cmd/Ctrl+K) with matching action taxonomy.");
+  }
+  if (!layoutContract.length) {
+    layoutContract.push("Keep top-level navigation and page actions visible without introducing heavy shell changes.");
+  }
 
   return [
-    `Target agent: ${targetAgent}`,
-    numbered("1. System overview", structured.systemOverview),
-    numbered("2. Architecture description", structured.architectureDescription),
-    numbered("3. Route and page layout map", renderRouteMap(structured.routeMap)),
-    numbered("4. Module list", list(structured.moduleList)),
-    numbered("5. Functionality logic", list(structured.functionalityLogic)),
-    numbered("6. Interfaces", list(structured.interfaces)),
-    numbered("7. Data models", list(structured.dataModels)),
-    numbered("8. Database design", list(structured.databaseDesign)),
-    numbered("9. Design system", renderDesignSystem(structured.designSystem)),
-    numbered("10. Behavior rules", list(structured.behaviorRules)),
-    numbered("11. Build steps ordered", list(structured.buildSteps)),
-    numbered("12. Test expectations", list(structured.testExpectations)),
-    numbered("13. Constraints", list(structured.constraints)),
-    numbered("14. Non goals", list(structured.nonGoals))
+    `#### Visual Direction`,
+    `- ${designSystem.visualDirection}`,
+    "",
+    "#### Color Tokens (Use Exact Hex)",
+    markdownBullets([
+      `Background: \`${tokens.bg}\``,
+      `Surface: \`${tokens.surface}\` | Surface Alt: \`${tokens.surfaceAlt}\``,
+      `Text: \`${tokens.text}\` | Muted Text: \`${tokens.textMuted}\``,
+      `Border: \`${tokens.border}\``,
+      `Primary: \`${tokens.primary}\` | Primary Hover: \`${tokens.primaryHover}\``,
+      `Accent: \`${tokens.accent}\``,
+      `Semantic: success \`${tokens.success}\`, warning \`${tokens.warning}\`, danger \`${tokens.danger}\``
+    ]),
+    "",
+    "#### Typography + Radius",
+    markdownBullets([
+      ...designSystem.typography.slice(0, 3),
+      `Radius scale: sm=${radii.sm}px, md=${radii.md}px, lg=${radii.lg}px, xl=${radii.xl}px`
+    ]),
+    "",
+    "#### Button and Component Styling Contract",
+    markdownBullets([
+      "Primary buttons: filled style with strong contrast text, subtle lift on hover, and medium radius.",
+      "Secondary buttons: bordered surface-alt background with same vertical rhythm as primary buttons.",
+      "Ghost buttons: low-emphasis text style for tertiary actions without losing focus states.",
+      "Cards and panels: thin border, medium-to-large radius, and restrained elevation to maintain dense information layout.",
+      "Inputs: surface-alt background, explicit border, and predictable focus ring behavior."
+    ]),
+    "",
+    "#### Layout + Positioning Contract",
+    markdownBullets(layoutContract),
+    "",
+    "#### Motion + Interaction",
+    markdownBullets([
+      ...designSystem.motion.slice(0, 3),
+      ui.hasAnimationSignals
+        ? "Detected transition/animation signals in source; keep micro-motion concise and functional."
+        : "Use short, purposeful transitions only where state change needs emphasis."
+    ]),
+    "",
+    "#### CSS Blueprint (Reference Implementation)",
+    designCssBlueprint(tokens, radii, ui)
+  ].join("\n");
+}
+
+function inspectPriority(path: string): number {
+  const lower = path.toLowerCase();
+  if (lower.includes("readme")) return 12;
+  if (lower.endsWith("package.json")) return 11;
+  if (lower.includes("pyproject") || lower.includes("requirements.txt") || lower.includes("go.mod")) return 10;
+  if (lower.includes("cargo.toml") || lower.includes("pom.xml") || lower.includes("build.gradle")) return 9;
+  if (lower.includes("app/") && lower.includes("page.")) return 8;
+  if (lower.includes("pages/")) return 7;
+  if (lower.includes("api/") || lower.includes("route.")) return 6;
+  if (lower.includes("dockerfile") || lower.includes("config")) return 5;
+  return 1;
+}
+
+function inspectedArtifacts(snapshot: RepoSnapshot): string[] {
+  const sorted = [...snapshot.files].sort((a, b) => inspectPriority(b.path) - inspectPriority(a.path));
+  return sorted.slice(0, 10).map((file) => `\`${file.path}\` - ${file.reason}`);
+}
+
+function stackSummary(stack: StackFingerprint): string[] {
+  return [
+    `Frontend: ${topNames(stack.frontend).join(", ") || "Not detected"}`,
+    `Backend: ${topNames(stack.backend).join(", ") || "Not detected"}`,
+    `Database: ${topNames(stack.db).join(", ") || "Not detected"}`,
+    `Auth: ${topNames(stack.auth).join(", ") || "Not detected"}`,
+    `Infrastructure: ${topNames(stack.infra).join(", ") || "Not detected"}`,
+    `Language: ${topNames(stack.language).join(", ") || "Not detected"}`
+  ];
+}
+
+function implementationPromptBlock(
+  structured: StructuredPlan,
+  targetAgent: TargetAgent,
+  snapshot: RepoSnapshot
+): string {
+  const routePromptLines = structured.routeMap
+    .slice(0, 10)
+    .map(
+      (route) =>
+        `- ${route.path}: ${route.layout} Components: ${route.components.slice(0, 4).join(", ")}. Logic: ${route.logic.join(" | ")}`
+    )
+    .join("\n");
+
+  const criticalRules = safeList(unique([...structured.behaviorRules, ...structured.constraints]).slice(0, 10));
+
+  return [
+    "```markdown",
+    `Implement ${snapshot.repo.owner}/${snapshot.repo.name} using this plan.`,
+    `Target agent: ${targetAgent}.`,
+    "",
+    "## Priority Order",
+    "1. Preserve original route/layout interaction model (do not replace floating menus with static sidebars unless source actually uses sidebar-first shell).",
+    "2. Preserve business behavior and data contracts with explicit validations.",
+    "3. Apply the specified design tokens and component recipes consistently.",
+    "",
+    "## Objective",
+    structured.systemOverview,
+    "",
+    "## Route Fidelity Requirements",
+    routePromptLines || "- /: define route layout and components.",
+    "",
+    "## Non-negotiable Rules",
+    markdownBullets(criticalRules),
+    "",
+    "## Build Order",
+    markdownNumbers(structured.buildSteps),
+    "",
+    "## Test Gates",
+    markdownBullets(structured.testExpectations),
+    "```"
+  ].join("\n");
+}
+
+function renderPrompt(
+  structured: StructuredPlan,
+  targetAgent: TargetAgent,
+  snapshot: RepoSnapshot,
+  stack: StackFingerprint,
+  architecture: ArchitectureModel,
+  intent: IntentSpec
+): string {
+  const contextAssumptions = safeList(intent.assumptions).slice(0, 6);
+  const contextUnknowns = safeList(intent.unknowns).slice(0, 6);
+  const reviewRisks = unique([
+    ...contextUnknowns.map((item) => `Unknown to validate: ${item}`),
+    ...structured.nonGoals.map((item) => `Scope boundary: ${item}`)
+  ]).slice(0, 8);
+
+  const requirementLines = unique([...structured.behaviorRules, ...structured.constraints]).slice(0, 12);
+  const trimmedModules = structured.moduleList.slice(0, 10);
+  const trimmedLogic = structured.functionalityLogic.slice(0, 12);
+  const trimmedInterfaces = structured.interfaces.slice(0, 10);
+  const trimmedDataModels = structured.dataModels.slice(0, 8);
+  const trimmedRoutes = structured.routeMap.slice(0, 12);
+  const architectureSummary = architecture.components
+    .slice(0, 8)
+    .map((component) => `${component.name} (${component.role}) -> ${component.tech.slice(0, 3).join(", ")}`)
+    .filter(Boolean);
+
+  return [
+    `# Plan: ${snapshot.repo.name} Implementation Blueprint`,
+    "",
+    "## TL;DR",
+    markdownBullets([
+      `Goal: ${structured.systemOverview}`,
+      "Recommended approach: incremental implementation aligned to existing architecture boundaries and route-level layout fidelity.",
+      "This plan is intentionally concise on context and verbose on implementation details, design fidelity, and UI behavior."
+    ]),
+    "",
+    "## Phase 1: Initial Understanding",
+    "### Repository Context",
+    markdownBullets([
+      `Repository: \`${snapshot.repo.owner}/${snapshot.repo.name}\``,
+      `Branch analyzed: \`${snapshot.repo.branch}\``,
+      `Scan mode: \`${snapshot.metadata.scanMode}\` | sampled files: ${snapshot.metadata.selectedFiles} | token estimate: ${snapshot.metadata.tokenEstimate}`,
+      `Target agent: \`${targetAgent}\``
+    ]),
+    "",
+    "### Key Files Inspected",
+    markdownBullets(inspectedArtifacts(snapshot)),
+    "",
+    "### Confirmed Stack + Architecture Signals",
+    markdownBullets(stackSummary(stack)),
+    "",
+    markdownBullets(architectureSummary),
+    "",
+    "## Phase 2: Design",
+    "### Requirements and Constraints",
+    markdownBullets(requirementLines),
+    "",
+    "### Route Blueprints (Layout + Interaction Fidelity)",
+    renderRoutePlanMarkdown(trimmedRoutes),
+    "",
+    "### Module + Interface Implementation Plan",
+    "#### Modules",
+    markdownBullets(trimmedModules),
+    "",
+    "#### Functionality logic",
+    markdownBullets(trimmedLogic),
+    "",
+    "#### Interfaces",
+    markdownBullets(trimmedInterfaces),
+    "",
+    "### Data + Database Design",
+    "#### Data Models (Priority Set)",
+    markdownBullets(trimmedDataModels),
+    "",
+    "#### Database design",
+    markdownBullets(structured.databaseDesign),
+    "",
+    "### Design System (Detailed, Implementable)",
+    renderDesignSystemMarkdown(structured.designSystem, snapshot),
+    "",
+    "## Phase 3: Review",
+    "### Alignment Checklist",
+    markdownBullets([
+      "Each user-facing route has explicit purpose, layout, component plan, and functionality logic.",
+      "Layout fidelity is preserved (floating menus, sticky headers, command palettes, shell pattern) from source signals.",
+      "Behavior rules map to enforceable logic paths and interface contracts.",
+      "Data contracts are reflected in data models and database/index/migration guidance.",
+      "Design system tokens and distinctive UI traits are consistently applied across routes."
+    ]),
+    "",
+    "### Assumptions to Confirm",
+    markdownBullets(contextAssumptions),
+    "",
+    "### Risks and Edge Cases",
+    markdownBullets(reviewRisks),
+    "",
+    "## Phase 4: Final Plan",
+    "### Recommended Approach",
+    markdownBullets([
+      "Implement the plan as a single coherent approach (no parallel competing implementations).",
+      "Follow the ordered steps below; preserve interaction and visual behavior before introducing structural changes."
+    ]),
+    "",
+    "### Implementation Steps",
+    markdownNumbers(structured.buildSteps),
+    "",
+    "### Testing",
+    markdownBullets(structured.testExpectations),
+    "",
+    "### Rollout and Migration Notes",
+    markdownBullets(unique([...structured.databaseDesign, ...structured.constraints]).slice(0, 10)),
+    "",
+    "## Implementation Prompt (LLM Ready)",
+    implementationPromptBlock(structured, targetAgent, snapshot)
   ].join("\n");
 }
 
@@ -525,11 +1134,16 @@ export async function compileExecutablePlan(
     schemaAsJson(structuredPlanSchema),
     "Rules:",
     "- keep build steps concrete, ordered, and directly executable",
-    "- include route-level plan with page layout descriptions for each user-facing route, DO NOT forget to read, parse, understand the layout and describe in detail how the page is structured and how the components are laid out",
+    "- include route-level plan with page layout descriptions for each user-facing route; describe exact structure, positioning, and interaction surfaces",
+    "- preserve source layout paradigms; if signals indicate floating menus, sticky top bars, or command overlays, reflect that explicitly instead of defaulting to generic sidebars",
     "- describe functionality logic and rule enforcement, not just feature names",
     "- if DB signals exist, include concrete schema/index/migration guidance",
     "- include a design system section with explicit style language, color tokens, radius scale, motion, and distinctive traits",
-    "- include concrete UI token guidance (colors, radius, typography) instead of generic advice, if the repository uses tailwind or shadcn extract the specs",
+    "- include concrete UI token guidance with hex colors and component styling behavior (buttons, forms, cards, overlays) instead of generic advice",
+    "- if the repository uses tailwind or shadcn, preserve utility-driven composition and component primitives in recommendations",
+    "- structure detail so it can be rendered into a 4-phase plan workflow: initial understanding, design, review, and final implementation plan",
+    "- include enough specificity for phase review: explicit constraints, assumptions, and actionable test criteria",
+    "- keep context concise: avoid duplicating the same information across multiple sections",
     "- derive from architecture + intent + inferred route/design hints",
     "- avoid placeholders like 'as needed'",
     "Artifacts:",
@@ -562,6 +1176,6 @@ export async function compileExecutablePlan(
     version: MODEL_VERSION,
     targetAgent,
     structured,
-    prompt: renderPrompt(structured, targetAgent)
+    prompt: renderPrompt(structured, targetAgent, snapshot, stack, architecture, intent)
   };
 }
