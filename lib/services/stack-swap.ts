@@ -105,6 +105,7 @@ export async function applyStackSwap(
     nextStack,
     nextArchitecture,
     nextIntent,
+    run.snapshot,
     request.targetAgent
   );
 

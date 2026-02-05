@@ -142,9 +142,27 @@ export const executablePlanSchema = z.object({
   structured: z.object({
     systemOverview: z.string(),
     architectureDescription: z.string(),
+    routeMap: z.array(
+      z.object({
+        path: z.string(),
+        purpose: z.string(),
+        layout: z.string(),
+        components: z.array(z.string()),
+        logic: z.array(z.string())
+      })
+    ),
     moduleList: z.array(z.string()),
+    functionalityLogic: z.array(z.string()),
     interfaces: z.array(z.string()),
     dataModels: z.array(z.string()),
+    databaseDesign: z.array(z.string()),
+    designSystem: z.object({
+      visualDirection: z.string(),
+      colorPalette: z.array(z.string()),
+      typography: z.array(z.string()),
+      components: z.array(z.string()),
+      statesAndFeedback: z.array(z.string())
+    }),
     behaviorRules: z.array(z.string()),
     buildSteps: z.array(z.string()),
     testExpectations: z.array(z.string()),

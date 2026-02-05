@@ -13,7 +13,13 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
-    const plan = await compileExecutablePlan(run.stack, run.architecture, input.intent, input.targetAgent);
+    const plan = await compileExecutablePlan(
+      run.stack,
+      run.architecture,
+      input.intent,
+      run.snapshot,
+      input.targetAgent
+    );
     const updated = {
       ...run,
       intent: input.intent,

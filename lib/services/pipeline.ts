@@ -88,7 +88,7 @@ export async function runAnalysis(input: AnalyzeRequest): Promise<RunResult> {
 
   startStage(stages, "plan");
   const targetAgent: TargetAgent = "claude-code";
-  const plan = await compileExecutablePlan(stack, architecture, intent, targetAgent).catch((error) => {
+  const plan = await compileExecutablePlan(stack, architecture, intent, snapshot, targetAgent).catch((error) => {
     failStage(stages, "plan", error);
     throw error;
   });
