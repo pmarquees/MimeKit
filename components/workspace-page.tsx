@@ -136,6 +136,10 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
   const [correctedLowConfidence, setCorrectedLowConfidence] = useState<Record<string, boolean>>({});
   const [stackSwapLoading, setStackSwapLoading] = useState(false);
   const [stackSwapDitherText, setStackSwapDitherText] = useState(STACK_DITHER_SOURCE);
+  const [graphModalOpen, setGraphModalOpen] = useState(false);
+  const [planSheetOpen, setPlanSheetOpen] = useState(false);
+  const [planSheetBusy, setPlanSheetBusy] = useState(false);
+  const [planSheetNotice, setPlanSheetNotice] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadRun(): Promise<void> {
@@ -302,6 +306,39 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
     }
   }
 
+  async function onCopyPlan(): Promise<void> {
+    if (!run) return;
+    await navigator.clipboard.writeText(run.plan.prompt);
+    setPlanSheetNotice("Plan copied to clipboard.");
+  }
+
+  function onDownloadPlan(): void {
+    if (!run) return;
+    const blob = new Blob([run.plan.prompt], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `mimickit-plan-${runId}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setPlanSheetNotice("Plan downloaded.");
+  }
+
+  async function onRegeneratePlanFromSheet(): Promise<void> {
+    if (!intentDraft) return;
+    setPlanSheetBusy(true);
+    setPlanSheetNotice(null);
+    try {
+      await recompile(intentDraft);
+      setPlanSheetNotice("Plan regenerated.");
+    } catch (sheetError) {
+      setError(sheetError instanceof Error ? sheetError.message : "Plan regeneration failed");
+    } finally {
+      setPlanSheetBusy(false);
+      setBusyLabel(null);
+    }
+  }
+
   if (error && !run) {
     return (
       <main className="intake-shell">
@@ -326,9 +363,41 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
     );
   }
 
+  const renderGraphCanvas = (isExpanded = false): React.ReactElement => (
+    <div className={`graph-canvas ${isExpanded ? "graph-canvas-expanded" : ""}`}>
+      <svg className="connector">
+        {run.architecture.edges.map((edge, index) => {
+          const from = layoutMap.get(edge.from);
+          const to = layoutMap.get(edge.to);
+          if (!from || !to) return null;
+
+          return <path key={`${edge.from}-${edge.to}-${index}`} d={pathBetween(from, to)} />;
+        })}
+      </svg>
+
+      {positioned.map(({ component, layout }, index) => (
+        <button
+          key={component.id}
+          className={`node node-button ${selectedComponent?.id === component.id ? "node-selected" : ""}`}
+          style={{
+            top: layout.y,
+            left: layout.x,
+            background: index % 2 === 1 ? "var(--bg-hakuji)" : "#fff"
+          }}
+          onClick={() => setSelectedComponentId(component.id)}
+        >
+          <div className="jp-text">{component.role.toUpperCase()}</div>
+          <div className="node-label u-caps">{component.role.split(" ")[0]}</div>
+          <div className="node-value">{component.name}</div>
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="layout-container">
-      <header className="app-header">
+    <>
+      <div className="layout-container">
+        <header className="app-header">
         <div className="header-brand">
           <div className="u-caps u-bold">MimicKit UI</div>
           <div className="u-caps u-muted">[Blueprint Tool]</div>
@@ -365,45 +434,21 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
             {busyLabel ?? "Compile Intent"}
           </button>
 
-          <Link href={`/plan/${runId}`} className="btn-compile ghost-link">
+          <button className="btn-compile ghost-link" onClick={() => setPlanSheetOpen(true)}>
             Open Plan
-          </Link>
+          </button>
         </div>
       </header>
 
       <aside className="panel-left">
-        <div className="u-pad u-border-b panel-head-row">
+        <div className="u-pad u-border-b panel-head-row spread">
           <span className="u-caps u-bold u-muted">System Graph</span>
+          <button className="mini-btn mini-btn-tight" onClick={() => setGraphModalOpen(true)}>
+            Expand
+          </button>
         </div>
 
-        <div className="graph-canvas">
-          <svg className="connector">
-            {run.architecture.edges.map((edge, index) => {
-              const from = layoutMap.get(edge.from);
-              const to = layoutMap.get(edge.to);
-              if (!from || !to) return null;
-
-              return <path key={`${edge.from}-${edge.to}-${index}`} d={pathBetween(from, to)} />;
-            })}
-          </svg>
-
-          {positioned.map(({ component, layout }, index) => (
-            <button
-              key={component.id}
-              className={`node node-button ${selectedComponent?.id === component.id ? "node-selected" : ""}`}
-              style={{
-                top: layout.y,
-                left: layout.x,
-                background: index % 2 === 1 ? "var(--bg-hakuji)" : "#fff"
-              }}
-              onClick={() => setSelectedComponentId(component.id)}
-            >
-              <div className="jp-text">{component.role.toUpperCase()}</div>
-              <div className="node-label u-caps">{component.role.split(" ")[0]}</div>
-              <div className="node-value">{component.name}</div>
-            </button>
-          ))}
-        </div>
+        {renderGraphCanvas()}
 
         <div className="node-inspector u-border-b">
           <div className="u-caps u-muted">Node details</div>
@@ -592,5 +637,52 @@ export function WorkspacePage({ runId }: Props): React.ReactElement {
         })}
       </aside>
     </div>
+
+      {graphModalOpen ? (
+        <div className="graph-modal-root" role="dialog" aria-modal="true" aria-label="Expanded system graph">
+          <button className="graph-modal-backdrop" onClick={() => setGraphModalOpen(false)} aria-label="Close graph modal" />
+          <section className="graph-modal-panel">
+            <div className="graph-modal-header">
+              <span className="u-caps u-bold u-muted">System Graph Expanded</span>
+              <button className="mini-btn" onClick={() => setGraphModalOpen(false)}>
+                Close
+              </button>
+            </div>
+            {renderGraphCanvas(true)}
+          </section>
+        </div>
+      ) : null}
+
+      {planSheetOpen ? (
+        <div className="sheet-root" role="dialog" aria-modal="true" aria-label="Executable plan">
+          <button className="sheet-backdrop" onClick={() => setPlanSheetOpen(false)} aria-label="Close plan sheet" />
+          <section className="sheet-panel">
+            <div className="sheet-handle" />
+            <div className="sheet-header">
+              <span className="u-caps u-bold u-muted">Executable Plan</span>
+              <button className="mini-btn" onClick={() => setPlanSheetOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="sheet-actions">
+              <button className="btn-compile" disabled={planSheetBusy} onClick={() => void onRegeneratePlanFromSheet()}>
+                {planSheetBusy ? "Regenerating" : "Regenerate"}
+              </button>
+              <button className="btn-compile" onClick={() => void onCopyPlan()}>
+                Copy
+              </button>
+              <button className="btn-compile" onClick={() => onDownloadPlan()}>
+                Download
+              </button>
+              <Link href={`/plan/${runId}`} className="btn-compile ghost-link">
+                Full Page
+              </Link>
+            </div>
+            <pre className="sheet-plan">{run.plan.prompt}</pre>
+            {planSheetNotice ? <p className="status-text">{planSheetNotice}</p> : null}
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }

@@ -116,6 +116,32 @@ select {
   font-size: 10px;
 }
 
+.form-hint {
+  margin-top: -2px;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.auth-row {
+  border: 1px solid var(--grid-line);
+  background: #fff;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.auth-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
 .url-input,
 .select-input,
 .intent-input {
@@ -577,6 +603,13 @@ select {
   cursor: pointer;
 }
 
+.mini-btn-tight {
+  padding: 5px 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .panel-right-loading .stack-card {
   opacity: 0.42;
 }
@@ -642,6 +675,117 @@ select {
   color: var(--text-secondary);
 }
 
+.graph-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.graph-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(22, 24, 22, 0.38);
+}
+
+.graph-modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(1100px, 95vw);
+  height: min(82vh, 860px);
+  border: 1px solid var(--grid-line);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  transform-origin: left top;
+  animation: graph-expand-in 0.28s ease-out;
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.16);
+}
+
+.graph-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--grid-line);
+}
+
+.graph-canvas-expanded {
+  min-height: 100%;
+  flex: 1;
+  background-size: 44px 44px;
+}
+
+.sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(14, 15, 14, 0.3);
+}
+
+.sheet-panel {
+  position: relative;
+  z-index: 1;
+  width: min(980px, 100%);
+  max-height: 88vh;
+  border: 1px solid var(--grid-line);
+  border-bottom: none;
+  border-top-left-radius: 22px;
+  border-top-right-radius: 22px;
+  background: #fff;
+  padding: 12px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: sheet-rise-in 0.32s cubic-bezier(0.2, 0.9, 0.2, 1);
+  box-shadow: 0 -16px 42px rgba(0, 0, 0, 0.18);
+}
+
+.sheet-handle {
+  align-self: center;
+  width: 62px;
+  height: 5px;
+  border-radius: 999px;
+  background: #d3d3d3;
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sheet-plan {
+  white-space: pre-wrap;
+  overflow: auto;
+  border: 1px solid var(--grid-line);
+  background: #fcfcfb;
+  padding: 12px;
+  line-height: 1.5;
+  font-size: 12px;
+  min-height: 220px;
+  max-height: 54vh;
+}
+
 @keyframes stack-pulse {
   0%,
   100% {
@@ -664,6 +808,28 @@ select {
   100% {
     opacity: 1;
     text-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+@keyframes graph-expand-in {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.84);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sheet-rise-in {
+  0% {
+    opacity: 0.6;
+    transform: translateY(58px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -740,5 +906,20 @@ select {
 
   .plan-header {
     flex-direction: column;
+  }
+
+  .graph-modal-root {
+    padding: 10px;
+  }
+
+  .graph-modal-panel {
+    width: 100%;
+    height: min(82vh, 720px);
+  }
+
+  .sheet-panel {
+    width: 100%;
+    border-top-left-radius: 18px;
+    border-top-right-radius: 18px;
   }
 }

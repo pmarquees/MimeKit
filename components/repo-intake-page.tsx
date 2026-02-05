@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn, signOut, useSession } from "next-auth/react";
 import { RunResult, ScanMode } from "@/lib/models";
 
 type LocalStage = {
@@ -20,6 +21,7 @@ const stagedTemplate: LocalStage[] = [
 
 export function RepoIntakePage(): React.ReactElement {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [repoUrl, setRepoUrl] = useState("https://github.com/vercel/next.js");
   const [branch, setBranch] = useState("");
   const [scanMode, setScanMode] = useState<ScanMode>("quick");
@@ -83,6 +85,27 @@ export function RepoIntakePage(): React.ReactElement {
         <p className="intake-subtitle">
           Analyze a public GitHub repository and generate architecture, intent, and executable plan.
         </p>
+        <div className="auth-row">
+          <div className="auth-text">
+            <span className="u-caps u-muted">GitHub Auth</span>
+            <span>
+              {status === "loading"
+                ? "Checking session..."
+                : session?.user
+                  ? `Signed in as ${session.user.name ?? session.user.email ?? "GitHub user"}`
+                  : "Not signed in. Public rate limit may be low."}
+            </span>
+          </div>
+          {session?.user ? (
+            <button type="button" className="btn-compile ghost-link" onClick={() => void signOut()}>
+              Sign Out
+            </button>
+          ) : (
+            <button type="button" className="btn-compile ghost-link" onClick={() => void signIn("github")}>
+              Sign In with GitHub
+            </button>
+          )}
+        </div>
 
         <form onSubmit={onAnalyze} className="intake-form">
           <label className="form-label" htmlFor="repo-url">
@@ -120,6 +143,10 @@ export function RepoIntakePage(): React.ReactElement {
             <option value="quick">Quick</option>
             <option value="deep">Deep</option>
           </select>
+
+          <p className="form-hint">
+            Sign in with GitHub to use higher API limits for analysis requests.
+          </p>
 
           <button type="submit" className="btn-compile" disabled={busy}>
             <span className={`status-dot ${busy ? "active" : ""}`} />

@@ -194,7 +194,8 @@ export type RunResult = z.infer<typeof runResultSchema>;
 export const analyzeRequestSchema = z.object({
   repoUrl: z.string().url(),
   branch: z.string().optional(),
-  scanMode: scanModeSchema.default("quick")
+  scanMode: scanModeSchema.default("quick"),
+  githubToken: z.string().trim().min(1).max(500).optional()
 });
 export type AnalyzeRequest = z.infer<typeof analyzeRequestSchema>;
 

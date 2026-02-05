@@ -73,26 +73,44 @@ const SOURCE_EXTENSIONS = new Set([
   "cs"
 ]);
 
-function githubHeaders(): HeadersInit {
+function resolveGitHubToken(githubToken?: string): string | undefined {
+  const trimmed = githubToken?.trim();
+  if (trimmed) return trimmed;
+  return GITHUB_TOKEN;
+}
+
+function githubHeaders(githubToken?: string): HeadersInit {
   const headers: HeadersInit = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28"
   };
-  if (GITHUB_TOKEN) {
-    headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
+  const token = resolveGitHubToken(githubToken);
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
   return headers;
 }
 
-async function fetchGitHubJson<T>(url: string): Promise<T> {
+function normalizeGitHubError(status: number, text: string): Error {
+  const body = text.toLowerCase();
+  if (status === 403 && body.includes("rate limit")) {
+    return new Error(
+      "GitHub API rate limit exceeded. Add a GitHub token in Repo Intake or set GITHUB_TOKEN in .env.local."
+    );
+  }
+
+  return new Error(`GitHub API error ${status}: ${text.slice(0, 300)}`);
+}
+
+async function fetchGitHubJson<T>(url: string, githubToken?: string): Promise<T> {
   const response = await fetch(url, {
-    headers: githubHeaders(),
+    headers: githubHeaders(githubToken),
     cache: "no-store"
   });
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`GitHub API error ${response.status}: ${text.slice(0, 300)}`);
+    throw normalizeGitHubError(response.status, text);
   }
 
   return (await response.json()) as T;
@@ -157,13 +175,14 @@ async function fetchFileContent(
   owner: string,
   name: string,
   path: string,
-  ref: string
+  ref: string,
+  githubToken?: string
 ): Promise<{ content: string; size: number } | undefined> {
   const encodedPath = normalizedContentPath(path);
   const url = `https://api.github.com/repos/${owner}/${name}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`;
 
   const response = await fetch(url, {
-    headers: githubHeaders(),
+    headers: githubHeaders(githubToken),
     cache: "no-store"
   });
 
@@ -213,11 +232,13 @@ function buildLanguageBreakdown(languages: Record<string, number>): RepoSnapshot
 export async function buildRepoSnapshot(
   repoUrl: string,
   branch: string | undefined,
-  scanMode: ScanMode
+  scanMode: ScanMode,
+  githubToken?: string
 ): Promise<RepoSnapshot> {
   const { owner, name } = parseGitHubRepoUrl(repoUrl);
   const repo = await fetchGitHubJson<GitHubRepoResponse>(
-    `https://api.github.com/repos/${owner}/${name}`
+    `https://api.github.com/repos/${owner}/${name}`,
+    githubToken
   );
 
   if (repo.private) {
@@ -233,7 +254,8 @@ export async function buildRepoSnapshot(
   const selectedBranch = branch || repo.default_branch;
 
   const treeResponse = await fetchGitHubJson<{ tree: GitHubTreeItem[] }>(
-    `https://api.github.com/repos/${owner}/${name}/git/trees/${encodeURIComponent(selectedBranch)}?recursive=1`
+    `https://api.github.com/repos/${owner}/${name}/git/trees/${encodeURIComponent(selectedBranch)}?recursive=1`,
+    githubToken
   );
 
   const fileTree: RepoTreeNode[] = treeResponse.tree.slice(0, LIMITS.maxTreeItems).map((item) => ({
@@ -282,7 +304,7 @@ export async function buildRepoSnapshot(
       continue;
     }
 
-    const fetched = await fetchFileContent(owner, name, candidate.path, selectedBranch);
+    const fetched = await fetchFileContent(owner, name, candidate.path, selectedBranch, githubToken);
     if (!fetched) continue;
 
     const content = safeSnippet(fetched.content, LIMITS.maxFileBytes);
@@ -303,7 +325,8 @@ export async function buildRepoSnapshot(
   }
 
   const languages = await fetchGitHubJson<Record<string, number>>(
-    `https://api.github.com/repos/${owner}/${name}/languages`
+    `https://api.github.com/repos/${owner}/${name}/languages`,
+    githubToken
   );
 
   return {

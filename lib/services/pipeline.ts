@@ -57,7 +57,12 @@ export async function runAnalysis(input: AnalyzeRequest): Promise<RunResult> {
   const stages = initStages();
 
   startStage(stages, "intake");
-  const snapshot = await buildRepoSnapshot(parsed.repoUrl, parsed.branch, parsed.scanMode).catch((error) => {
+  const snapshot = await buildRepoSnapshot(
+    parsed.repoUrl,
+    parsed.branch,
+    parsed.scanMode,
+    parsed.githubToken
+  ).catch((error) => {
     failStage(stages, "intake", error);
     throw error;
   });
