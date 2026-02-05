@@ -50,6 +50,73 @@ function parsePackageDeps(snapshot: RepoSnapshot): Record<string, string> {
   }
 }
 
+function collectStyleSource(snapshot: RepoSnapshot): string {
+  const styleFiles = snapshot.files.filter((file) => {
+    const path = file.path.toLowerCase();
+    return (
+      path.endsWith(".css") ||
+      path.endsWith(".scss") ||
+      path.endsWith(".sass") ||
+      path.endsWith(".less") ||
+      path.includes("tailwind") ||
+      path.includes("theme") ||
+      path.includes("globals.css")
+    );
+  });
+
+  return styleFiles.map((file) => file.content).join("\n");
+}
+
+function detectDominantHexColors(snapshot: RepoSnapshot): string[] {
+  const text = collectStyleSource(snapshot);
+  if (!text) return [];
+
+  const matches = text.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [];
+  const counts = new Map<string, number>();
+  for (const value of matches) {
+    const key = value.toUpperCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([hex]) => hex);
+}
+
+function detectRadiusSignals(snapshot: RepoSnapshot): string[] {
+  const text = collectStyleSource(snapshot);
+  if (!text) return [];
+
+  const cssRadius = text.match(/border-radius\s*:\s*([^;]+);/gi) ?? [];
+  const tailwindRadius = text.match(/rounded-(none|sm|md|lg|xl|2xl|3xl|full)/g) ?? [];
+  const values = new Set<string>();
+
+  for (const rule of cssRadius) {
+    const value = rule.split(":")[1]?.replace(";", "").trim();
+    if (value) values.add(value);
+  }
+  for (const token of tailwindRadius) {
+    values.add(token);
+  }
+
+  return [...values].slice(0, 8);
+}
+
+function detectTypographySignals(snapshot: RepoSnapshot): string[] {
+  const text = collectStyleSource(snapshot);
+  if (!text) return [];
+
+  const matches = text.match(/font-family\s*:\s*([^;]+);/gi) ?? [];
+  const values = new Set<string>();
+  for (const rule of matches) {
+    const value = rule.split(":")[1]?.replace(";", "").trim();
+    if (value) values.add(value);
+  }
+
+  return [...values].slice(0, 5);
+}
+
 function normalizeRouteSegments(raw: string): string {
   const parts = raw.split("/").filter(Boolean);
   const filtered = parts.filter((segment) => {
@@ -238,25 +305,66 @@ function inferDesignSystem(snapshot: RepoSnapshot, stack: StackFingerprint): Des
   const deps = parsePackageDeps(snapshot);
   const depNames = Object.keys(deps).map((name) => name.toLowerCase());
   const has = (needle: string) => depNames.some((name) => name.includes(needle));
+  const detectedColors = detectDominantHexColors(snapshot);
+  const detectedRadii = detectRadiusSignals(snapshot);
+  const detectedTypography = detectTypographySignals(snapshot);
 
   const frontend = topNames(stack.frontend)[0] ?? "web framework";
 
   const colorPalette = has("tailwind")
     ? [
-        "Use semantic tokens built on neutral scale (surface/base/text)",
-        "Define primary, accent, success, warning, and danger colors in design tokens",
-        "Ensure contrast ratios for text and interactive states"
+        detectedColors[0]
+          ? `Primary token family should be anchored to detected color ${detectedColors[0]} and harmonized variants.`
+          : "Define primary token family with 50-900 scale and contrast-safe on-primary text color.",
+        detectedColors[1]
+          ? `Secondary accent can derive from ${detectedColors[1]} for highlights and interaction emphasis.`
+          : "Define secondary accent token family for highlights, badges, and callouts.",
+        "Define semantic tokens for success, warning, danger, info, surfaces, text, and border states."
       ]
     : [
-        "Define CSS variables for background/surface/border/text/primary/accent",
-        "Map color tokens to component states (default/hover/active/disabled)",
-        "Use consistent grayscale + one primary accent family"
+        detectedColors[0]
+          ? `Set --color-primary around ${detectedColors[0]} with hover/active variants.`
+          : "Set --color-primary plus hover/active variants and explicit contrast pairings.",
+        detectedColors[1]
+          ? `Set --color-accent around ${detectedColors[1]} for secondary emphasis surfaces.`
+          : "Set --color-accent for secondary emphasis and supporting highlights.",
+        "Define neutral scale tokens (--surface-0..3, --text-strong/muted, --border-default/strong)."
       ];
 
-  const typography = [
-    "Primary UI font for body and labels with clear readability at 12-16px",
-    "Secondary mono font for technical metadata, code-like fields, and diagnostics",
-    "Consistent heading scale with explicit weight/line-height tokens"
+  const typography = detectedTypography.length
+    ? [
+        `Detected typography families: ${detectedTypography.join(" | ")}.`,
+        "Promote one primary UI family and one secondary mono/technical family into explicit tokens.",
+        "Define heading/body/caption scales with fixed line-height and weight mappings."
+      ]
+    : [
+        "Define primary UI font token for body/labels and secondary mono token for technical metadata.",
+        "Define heading scale tokens (h1-h6) with explicit size/line-height/weight.",
+        "Define caption/label/helper text tokens to keep hierarchy consistent."
+      ];
+
+  const radiusSystem = detectedRadii.length
+    ? [
+        `Detected corner-radius signals: ${detectedRadii.join(", ")}.`,
+        "Normalize into radius tokens (r-xs/r-sm/r-md/r-lg/r-xl) and map components to one token each.",
+        "Use larger radii only for modal/sheet/special cards; keep dense controls tighter."
+      ]
+    : [
+        "Define radius scale: r-xs=4px, r-sm=8px, r-md=12px, r-lg=16px, r-xl=24px.",
+        "Apply r-sm for controls, r-md for cards/panels, r-lg+ for modal and sheet surfaces.",
+        "Keep radius usage intentional to preserve distinctive but consistent UI character."
+      ];
+
+  const pageLayoutPatterns = [
+    "Define route-level layout templates: shell page, dense workspace page, detail page, form/settings page.",
+    "Specify page zones: title/actions header, primary content region, side context rail, feedback strip.",
+    "Set responsive breakpoints and max-width/grid behavior per template."
+  ];
+
+  const styleLanguage = [
+    "Distinct technical-workbench aesthetic: high information density with disciplined spacing and strong hierarchy.",
+    "Use subtle layered surfaces, crisp borders, and restrained accent bursts for emphasis.",
+    "Drive styling from reusable tokens/utilities, not one-off per-page values."
   ];
 
   const components = [
@@ -277,9 +385,22 @@ function inferDesignSystem(snapshot: RepoSnapshot, stack: StackFingerprint): Des
 
   return {
     visualDirection: `Design system for ${frontend}: high-clarity technical workspace with strong hierarchy, restrained accents, and explicit state feedback.`,
+    styleLanguage,
     colorPalette,
     typography,
+    radiusSystem,
+    pageLayoutPatterns,
     components,
+    motion: [
+      "Define motion tokens (fast/standard/slow) and apply consistently across hover, modal, and sheet interactions.",
+      "Use spring-like easing for major surfaces and short eased fades for micro feedback.",
+      "Honor reduced-motion preference and keep transitions informative, not ornamental."
+    ],
+    distinctiveTraits: [
+      "Consistent corner-radius and border treatment makes the interface recognizable.",
+      "Mono + UI typography pairing for technical identity and legibility.",
+      "Signature panel layering and status/confidence visual treatment repeated across routes."
+    ],
     statesAndFeedback: [
       "Define hover/focus/active/disabled states for all interactive elements",
       "Use non-blocking progress indicators for long-running analysis operations",
@@ -352,9 +473,14 @@ function renderRouteMap(routeMap: StructuredPlan["routeMap"]): string {
 function renderDesignSystem(designSystem: DesignSystemPlan): string {
   return [
     `Visual direction: ${designSystem.visualDirection}`,
+    `Style language: ${designSystem.styleLanguage.join(" | ")}`,
     `Color palette: ${designSystem.colorPalette.join(" | ")}`,
     `Typography: ${designSystem.typography.join(" | ")}`,
+    `Radius system: ${designSystem.radiusSystem.join(" | ")}`,
+    `Page layout patterns: ${designSystem.pageLayoutPatterns.join(" | ")}`,
     `Components: ${designSystem.components.join(" | ")}`,
+    `Motion: ${designSystem.motion.join(" | ")}`,
+    `Distinctive traits: ${designSystem.distinctiveTraits.join(" | ")}`,
     `States and feedback: ${designSystem.statesAndFeedback.join(" | ")}`
   ].join("\n");
 }
@@ -402,7 +528,8 @@ export async function compileExecutablePlan(
     "- include route-level plan with page layout descriptions for each user-facing route",
     "- describe functionality logic and rule enforcement, not just feature names",
     "- if DB signals exist, include concrete schema/index/migration guidance",
-    "- include a design system section with visual direction, colors, typography, components, and states",
+    "- include a design system section with explicit style language, color tokens, radius scale, motion, and distinctive traits",
+    "- include concrete UI token guidance (colors, radius, typography) instead of generic advice",
     "- derive from architecture + intent + inferred route/design hints",
     "- avoid placeholders like 'as needed'",
     "Artifacts:",

@@ -17,7 +17,7 @@ export const LIMITS = {
   maxContentsFiles: 80
 };
 
-export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-3-7-sonnet-latest";
+export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5-20250929";
 export const ANTHROPIC_API_BASE = process.env.ANTHROPIC_API_BASE ?? "https://api.anthropic.com/v1";
 export const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 export const GITHUB_TOKEN = process.env.GITHUB_TOKEN;

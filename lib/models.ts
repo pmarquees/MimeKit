@@ -158,9 +158,14 @@ export const executablePlanSchema = z.object({
     databaseDesign: z.array(z.string()),
     designSystem: z.object({
       visualDirection: z.string(),
+      styleLanguage: z.array(z.string()),
       colorPalette: z.array(z.string()),
       typography: z.array(z.string()),
+      radiusSystem: z.array(z.string()),
+      pageLayoutPatterns: z.array(z.string()),
       components: z.array(z.string()),
+      motion: z.array(z.string()),
+      distinctiveTraits: z.array(z.string()),
       statesAndFeedback: z.array(z.string())
     }),
     behaviorRules: z.array(z.string()),
