@@ -277,7 +277,7 @@ export function RepoIntakePage(): React.ReactElement {
           <p className="u-caps u-faint">MimeKit / What is this?</p>
           <h1 className="intake-title">Behavioral Transpiler</h1>
           <p className="what-explain-body">
-            MimicKit is an intent transpiler for software systems. Point it at any GitHub
+            MimeKit is an intent transpiler for software systems. Point it at any GitHub
             repository and it will scan the entire codebase &mdash; detecting the tech stack,
             extracting the architecture graph, and reverse-engineering the original developer
             intent. It then compiles everything into a structured, executable plan that an AI
@@ -285,6 +285,7 @@ export function RepoIntakePage(): React.ReactElement {
             from scratch. Think of it as a blueprint extractor: it reads the code so an AI
             doesn&apos;t have to guess.
           </p>
+          <p className="what-explain-body">A system that turns any codebase or product into a model-readable build plan that can be regenerated, adapted, and reimplemented in another stack using LLMs.          </p>
         </div>
 
         {busy ? (
