@@ -1,7 +1,10 @@
 import { mkdir, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 
-const RUNS_ROOT = join(process.cwd(), ".runs");
+const RUNS_ROOT = process.env.VERCEL
+  ? join(tmpdir(), ".runs")
+  : join(process.cwd(), ".runs");
 
 export function runsRoot(): string {
   return RUNS_ROOT;
