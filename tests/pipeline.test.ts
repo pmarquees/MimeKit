@@ -132,7 +132,7 @@ describe("pipeline orchestration", () => {
     vi.mocked(buildRepoSnapshot).mockResolvedValueOnce({
       version: "1.0.0",
       repo: { url: "https://github.com/a/b", owner: "a", name: "b", branch: "main", defaultBranch: "main", sizeKb: 100, stars: 0, openIssues: 0 },
-      metadata: { scanMode: "quick", fetchedAt: new Date().toISOString(), totalFiles: 5, selectedFiles: 2, skippedBinaryFiles: 0, skippedScriptFiles: 0, tokenEstimate: 300 },
+      metadata: { scanMode: "quick", depthStrategy: "file-count", fetchedAt: new Date().toISOString(), totalFiles: 5, selectedFiles: 2, skippedBinaryFiles: 0, skippedScriptFiles: 0, tokenEstimate: 300 },
       languages: [],
       fileTree: [],
       files: []

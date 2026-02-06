@@ -30,7 +30,7 @@ export function PageBootLoader(): React.ReactElement | null {
       <div className="boot-chip">
         <div className="boot-line">
           <span className="stack-loading-dot" />
-          <DitherText source="BOOTING MIMICKIT WORKSPACE" className="boot-text" />
+          <DitherText source="BOOTING MIMEKIT WORKSPACE" className="boot-text" />
         </div>
       </div>
     </div>

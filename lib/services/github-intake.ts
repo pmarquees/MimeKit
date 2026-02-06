@@ -1,5 +1,5 @@
 import { LIMITS, GITHUB_TOKEN } from "@/lib/services/config";
-import { RepoSnapshot, ScanMode, SelectedFile, MODEL_VERSION, RepoTreeNode } from "@/lib/models";
+import { DepthStrategy, RepoSnapshot, ScanMode, SelectedFile, MODEL_VERSION, RepoTreeNode } from "@/lib/models";
 import {
   estimateTokens,
   isBinaryFile,
@@ -274,19 +274,43 @@ export async function buildRepoSnapshot(
       reason: reasonForPath(item.path) as string
     }));
 
-  const sourceCandidates = blobItems
-    .filter((item) => isSourceFile(item.path))
-    .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
-    .slice(0, scanMode === "quick" ? LIMITS.quickTopFiles : LIMITS.deepTopFiles)
-    .map((item) => ({
-      path: item.path,
-      size: item.size ?? 0,
-      reason: "large source sample"
-    }));
+  // Determine depth strategy: when the repo has fewer source files than
+  // quickTopFiles, deep mode shifts to per-file depth (line-level analysis)
+  // instead of broader file-count sampling.
+  const allSourceBlobs = blobItems.filter((item) => isSourceFile(item.path));
+  const isSmallRepo = allSourceBlobs.length < LIMITS.quickTopFiles;
+  const depthStrategy: DepthStrategy =
+    scanMode === "deep" && isSmallRepo ? "per-file" : "file-count";
+
+  let sourceCandidates: Array<{ path: string; size: number; reason: string }>;
+  if (depthStrategy === "per-file") {
+    // Small repo + deep mode: select ALL source files for per-file depth
+    sourceCandidates = allSourceBlobs
+      .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
+      .map((item) => ({
+        path: item.path,
+        size: item.size ?? 0,
+        reason: "per-file depth sample"
+      }));
+  } else {
+    sourceCandidates = allSourceBlobs
+      .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
+      .slice(0, scanMode === "quick" ? LIMITS.quickTopFiles : LIMITS.deepTopFiles)
+      .map((item) => ({
+        path: item.path,
+        size: item.size ?? 0,
+        reason: "large source sample"
+      }));
+  }
 
   const combined = [...exactCandidates, ...sourceCandidates]
     .filter((item, index, arr) => arr.findIndex((x) => x.path === item.path) === index)
     .slice(0, LIMITS.maxContentsFiles);
+
+  // Per-file depth mode: increase per-file byte budget for deeper line-level analysis
+  const effectiveMaxFileBytes = depthStrategy === "per-file"
+    ? LIMITS.maxFileBytes * 2
+    : LIMITS.maxFileBytes;
 
   const selectedFiles: SelectedFile[] = [];
   let skippedBinaryFiles = 0;
@@ -307,7 +331,7 @@ export async function buildRepoSnapshot(
     const fetched = await fetchFileContent(owner, name, candidate.path, selectedBranch, githubToken);
     if (!fetched) continue;
 
-    const content = safeSnippet(fetched.content, LIMITS.maxFileBytes);
+    const content = safeSnippet(fetched.content, effectiveMaxFileBytes);
     const projectedTokens = tokenEstimate + estimateTokens(content);
     if (projectedTokens > LIMITS.maxSnapshotTokens) {
       break;
@@ -345,6 +369,7 @@ export async function buildRepoSnapshot(
     },
     metadata: {
       scanMode,
+      depthStrategy,
       fetchedAt: new Date().toISOString(),
       totalFiles: blobItems.length,
       selectedFiles: selectedFiles.length,

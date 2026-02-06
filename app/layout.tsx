@@ -4,7 +4,7 @@ import { AuthSessionProvider } from "@/components/providers/auth-session-provide
 import { PageBootLoader } from "@/components/page-boot-loader";
 
 export const metadata: Metadata = {
-  title: "MimicKit",
+  title: "MimeKit",
   description: "Behavioral transpiler for software systems"
 };
 

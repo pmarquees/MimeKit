@@ -358,6 +358,133 @@ function detectFromDockerfile(content: string): Finding[] {
   return findings;
 }
 
+function detectFromSwiftPackage(content: string): Finding[] {
+  const findings: Finding[] = [];
+
+  findings.push({
+    category: "infra",
+    name: "Swift Package Manager",
+    evidence: "Package.swift present",
+    confidenceBoost: 0.2
+  });
+
+  if (/\.iOS|\.macOS|\.tvOS|\.watchOS/.test(content)) {
+    findings.push({
+      category: "frontend",
+      name: "Apple Platform",
+      evidence: "Package.swift platform targets",
+      confidenceBoost: 0.15
+    });
+  }
+
+  return findings;
+}
+
+function detectFromPodfile(content: string): Finding[] {
+  const findings: Finding[] = [];
+  const lowered = content.toLowerCase();
+
+  findings.push({
+    category: "infra",
+    name: "CocoaPods",
+    evidence: "Podfile present",
+    confidenceBoost: 0.18
+  });
+
+  if (lowered.includes("alamofire")) {
+    findings.push({
+      category: "backend",
+      name: "Alamofire",
+      evidence: "Podfile contains Alamofire",
+      confidenceBoost: 0.15
+    });
+  }
+
+  if (lowered.includes("realm")) {
+    findings.push({
+      category: "db",
+      name: "Realm",
+      evidence: "Podfile contains Realm",
+      confidenceBoost: 0.18
+    });
+  }
+
+  return findings;
+}
+
+function detectFromSwiftSource(content: string, path: string): Finding[] {
+  const findings: Finding[] = [];
+
+  if (/\bimport\s+SwiftUI\b/.test(content)) {
+    findings.push({
+      category: "frontend",
+      name: "SwiftUI",
+      evidence: `${path}: import SwiftUI`,
+      confidenceBoost: 0.3
+    });
+  }
+
+  if (/\bimport\s+UIKit\b/.test(content)) {
+    findings.push({
+      category: "frontend",
+      name: "UIKit",
+      evidence: `${path}: import UIKit`,
+      confidenceBoost: 0.25
+    });
+  }
+
+  if (/\bimport\s+Combine\b/.test(content)) {
+    findings.push({
+      category: "frontend",
+      name: "Combine",
+      evidence: `${path}: import Combine`,
+      confidenceBoost: 0.1
+    });
+  }
+
+  if (/\bimport\s+CoreData\b/.test(content)) {
+    findings.push({
+      category: "db",
+      name: "Core Data",
+      evidence: `${path}: import CoreData`,
+      confidenceBoost: 0.2
+    });
+  }
+
+  if (/\bimport\s+SwiftData\b/.test(content)) {
+    findings.push({
+      category: "db",
+      name: "SwiftData",
+      evidence: `${path}: import SwiftData`,
+      confidenceBoost: 0.22
+    });
+  }
+
+  if (/\bimport\s+Firebase\b|\bimport\s+FirebaseAuth\b/.test(content)) {
+    findings.push({
+      category: "auth",
+      name: "Firebase",
+      evidence: `${path}: import Firebase/FirebaseAuth`,
+      confidenceBoost: 0.2
+    });
+  }
+
+  return findings;
+}
+
+function detectFromXcodeProject(path: string): Finding[] {
+  const findings: Finding[] = [];
+
+  findings.push({
+    category: "infra",
+    name: "Xcode Project",
+    evidence: `${path} present`,
+    confidenceBoost: 0.25
+  });
+
+  return findings;
+}
+
 function detectLanguageFindings(snapshot: RepoSnapshot): Finding[] {
   return snapshot.languages.slice(0, 3).map((lang) => ({
     category: "language",
@@ -385,6 +512,20 @@ export function detectStack(snapshot: RepoSnapshot): StackFingerprint {
       findings.push(...detectFromJavaFiles(file.content, file.path));
     } else if (file.path.endsWith("Dockerfile")) {
       findings.push(...detectFromDockerfile(file.content));
+    } else if (file.path === "Package.swift" || file.path.endsWith("/Package.swift")) {
+      findings.push(...detectFromSwiftPackage(file.content));
+    } else if (file.path.endsWith("Podfile") || file.path === "Podfile") {
+      findings.push(...detectFromPodfile(file.content));
+    } else if (file.path.endsWith(".swift")) {
+      findings.push(...detectFromSwiftSource(file.content, file.path));
+    }
+  }
+
+  // Detect Xcode project from file tree (not sampled content)
+  for (const node of snapshot.fileTree) {
+    if (node.path.endsWith(".xcodeproj") || node.path.endsWith(".xcworkspace")) {
+      findings.push(...detectFromXcodeProject(node.path));
+      break;
     }
   }
 

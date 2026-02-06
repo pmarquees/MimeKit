@@ -85,8 +85,15 @@ export function RepoIntakePage(): React.ReactElement {
 
   return (
     <main className="intake-shell">
+      <img
+        src="/mimickit-logo.png"
+        alt="MimicKit"
+        className="intake-logo"
+        width={80}
+        height={80}
+      />
       <section className={`intake-card ${busy ? "intake-card-loading" : ""}`} aria-busy={busy}>
-        <p className="u-caps u-faint">MimicKit / Behavioral Transpiler</p>
+        <p className="u-caps u-faint">MimeKit / Intent Transpiler</p>
         <h1 className="intake-title">Repository Intake</h1>
         <p className="intake-subtitle">
           Analyze a public GitHub repository and generate architecture, intent, and executable plan.
@@ -160,7 +167,7 @@ export function RepoIntakePage(): React.ReactElement {
           </button>
         </form>
 
-        <div className="stage-list">
+        {/* <div className="stage-list">
           {stages.map((stage) => (
             <div className="stage-row" key={stage.id}>
               <span>{stage.label}</span>
@@ -169,7 +176,7 @@ export function RepoIntakePage(): React.ReactElement {
               </span>
             </div>
           ))}
-        </div>
+        </div> */}
 
         {error ? <p className="error-text">{error}</p> : null}
 

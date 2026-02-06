@@ -175,6 +175,108 @@ function detectTypographySignals(snapshot: RepoSnapshot): string[] {
   return [...values].slice(0, 5);
 }
 
+// ---------------------------------------------------------------------------
+// Stack platform detection
+// ---------------------------------------------------------------------------
+
+function isNativeMobileStack(stack: StackFingerprint): boolean {
+  const frontendNames = stack.frontend.map((item) => item.name.toLowerCase());
+  const languageNames = stack.language.map((item) => item.name.toLowerCase());
+  const infraNames = stack.infra.map((item) => item.name.toLowerCase());
+
+  const hasSwiftUI = frontendNames.includes("swiftui");
+  const hasUIKit = frontendNames.includes("uikit");
+  const hasApplePlatform = frontendNames.includes("apple platform");
+  const hasSwiftLang = languageNames.includes("swift");
+  const hasXcode = infraNames.includes("xcode project");
+  const hasSPM = infraNames.includes("swift package manager");
+
+  // Strong signal: SwiftUI or UIKit detected as frontend framework
+  if (hasSwiftUI || hasUIKit) return true;
+
+  // Medium signal: Swift language + Apple platform or Xcode project
+  if (hasSwiftLang && (hasApplePlatform || hasXcode || hasSPM)) return true;
+
+  return false;
+}
+
+function isSwiftUIStack(stack: StackFingerprint): boolean {
+  return stack.frontend.some((item) => item.name.toLowerCase() === "swiftui");
+}
+
+// ---------------------------------------------------------------------------
+// SwiftUI style detection helpers
+// ---------------------------------------------------------------------------
+
+function collectSwiftSource(snapshot: RepoSnapshot): string {
+  const swiftFiles = snapshot.files.filter((file) => file.path.endsWith(".swift"));
+  return swiftFiles.map((file) => file.content).join("\n");
+}
+
+function detectSwiftUIColorSignals(snapshot: RepoSnapshot): string[] {
+  const text = collectSwiftSource(snapshot);
+  if (!text) return [];
+
+  // Detect Color literals and asset catalog references
+  const colorLiterals = text.match(/Color\(\s*(?:red|"[^"]+"|\.[\w]+)/g) ?? [];
+  const assetColors = text.match(/Color\("([^"]+)"\)/g) ?? [];
+  const systemColors = text.match(/Color\.(\w+)/g) ?? [];
+
+  const values = new Set<string>();
+  for (const c of [...colorLiterals, ...assetColors, ...systemColors]) {
+    values.add(c);
+    if (values.size >= 8) break;
+  }
+
+  return [...values];
+}
+
+function detectSwiftUIFontSignals(snapshot: RepoSnapshot): string[] {
+  const text = collectSwiftSource(snapshot);
+  if (!text) return [];
+
+  const fontMatches = text.match(/\.font\(\s*\.(\w+)/g) ?? [];
+  const customFonts = text.match(/Font\.custom\("([^"]+)"/g) ?? [];
+  const values = new Set<string>();
+  for (const f of [...fontMatches, ...customFonts]) {
+    values.add(f);
+    if (values.size >= 6) break;
+  }
+
+  return [...values];
+}
+
+function detectSwiftUIPatternSignals(snapshot: RepoSnapshot): {
+  hasNavigationStack: boolean;
+  hasTabView: boolean;
+  hasSheet: boolean;
+  hasFullScreenCover: boolean;
+  hasToolbar: boolean;
+  hasSearchable: boolean;
+  hasSwiftData: boolean;
+  hasCoreData: boolean;
+  hasAsyncImage: boolean;
+  hasAnimation: boolean;
+} {
+  const text = collectSwiftSource(snapshot);
+  return {
+    hasNavigationStack: /\bNavigationStack\b|\bNavigationView\b/.test(text),
+    hasTabView: /\bTabView\b/.test(text),
+    hasSheet: /\.sheet\b/.test(text),
+    hasFullScreenCover: /\.fullScreenCover\b/.test(text),
+    hasToolbar: /\.toolbar\b/.test(text),
+    hasSearchable: /\.searchable\b/.test(text),
+    hasSwiftData: /\bimport\s+SwiftData\b|\b@Model\b/.test(text),
+    hasCoreData: /\bimport\s+CoreData\b|\bNSManagedObject\b/.test(text),
+    hasAsyncImage: /\bAsyncImage\b/.test(text),
+    hasAnimation: /\.animation\b|\.withAnimation\b|\.transition\b/.test(text)
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Route / layout helpers
+// ---------------------------------------------------------------------------
+
 function normalizeRouteSegments(raw: string): string {
   const parts = raw.split("/").filter(Boolean);
   const filtered = parts.filter((segment) => {
@@ -644,6 +746,125 @@ function inferDesignSystem(snapshot: RepoSnapshot, stack: StackFingerprint): Des
   };
 }
 
+function inferSwiftUIDesignSystem(snapshot: RepoSnapshot, stack: StackFingerprint): DesignSystemPlan {
+  const colorSignals = detectSwiftUIColorSignals(snapshot);
+  const fontSignals = detectSwiftUIFontSignals(snapshot);
+  const patterns = detectSwiftUIPatternSignals(snapshot);
+  const isSwiftUI = isSwiftUIStack(stack);
+
+  const framework = isSwiftUI ? "SwiftUI" : "UIKit";
+
+  const colorPalette = colorSignals.length
+    ? [
+        `Detected color references: ${colorSignals.slice(0, 4).join(", ")}.`,
+        "Promote detected colors into an AppColors enum or Color extension with semantic naming (primary, accent, surface, onSurface).",
+        "Define semantic color tokens for success, warning, danger, and muted text states using Color asset catalog or extension."
+      ]
+    : [
+        "Define AppColors enum or Color extension: primary, accent, surface, onSurface, background, border.",
+        "Add semantic tokens: success, warning, danger, info, textMuted, textStrong.",
+        "Support dark/light mode via asset catalog color sets or environment-based Color switching."
+      ];
+
+  const typography = fontSignals.length
+    ? [
+        `Detected font usage: ${fontSignals.slice(0, 4).join(", ")}.`,
+        "Normalize into AppTypography enum: title, headline, body, callout, caption, footnote.",
+        "Keep dynamic type support; use relativeTo: parameter for custom fonts."
+      ]
+    : [
+        "Use system font hierarchy: .largeTitle, .title, .headline, .body, .callout, .caption, .footnote.",
+        "Define AppTypography extension for app-specific overrides (custom typeface, weight, tracking).",
+        "Ensure Dynamic Type support; never use fixed font sizes without .dynamicTypeSize range."
+      ];
+
+  const radiusSystem = [
+    "Define AppRadius constants: xs=4, sm=8, md=12, lg=16, xl=24.",
+    "Use RoundedRectangle(cornerRadius:) with radius tokens; avoid raw numeric literals.",
+    "Containers and cards use md/lg; buttons use sm/md; full-pill uses Capsule()."
+  ];
+
+  const pageLayoutPatterns: string[] = [];
+  if (patterns.hasNavigationStack) {
+    pageLayoutPatterns.push("NavigationStack as root shell with path-based navigation and typed navigation destinations.");
+  }
+  if (patterns.hasTabView) {
+    pageLayoutPatterns.push("TabView for top-level app sections with distinct tab items and badge support.");
+  }
+  if (patterns.hasToolbar) {
+    pageLayoutPatterns.push("Toolbar placement for navigation bar actions (.topBarTrailing, .topBarLeading, .bottomBar).");
+  }
+  if (!pageLayoutPatterns.length) {
+    pageLayoutPatterns.push(
+      isSwiftUI
+        ? "NavigationStack + TabView shell pattern for primary navigation with typed destinations."
+        : "UINavigationController + UITabBarController shell pattern for primary navigation."
+    );
+  }
+  pageLayoutPatterns.push(
+    "Define screen-level templates: list screen, detail screen, form screen, settings screen.",
+    "Use GeometryReader sparingly; prefer adaptive layout with ViewThatFits and Layout protocol."
+  );
+
+  const styleLanguage = [
+    `Distinct ${framework}-native aesthetic: platform-standard controls with refined visual hierarchy.`,
+    "Use layered materials (ultraThinMaterial, regularMaterial) for depth instead of custom shadows.",
+    "Drive styling from reusable ViewModifiers and shared AppStyle constants, not per-view literals."
+  ];
+
+  const components = [
+    `App shell (${patterns.hasTabView ? "TabView" : "NavigationStack"} root with navigation destinations)`,
+    "Button styles (PrimaryButtonStyle, SecondaryButtonStyle, DestructiveButtonStyle with loading state)",
+    "Form controls (TextField styles, Picker, Toggle, validated input with @FocusState)",
+    "List/detail primitives (custom row styles, section headers, swipe actions)",
+    "Feedback surfaces (alert, confirmationDialog, toast overlay, empty/loading/error state views)",
+    "Sheet and fullScreenCover patterns with detent configuration and dismissal behavior"
+  ];
+
+  if (patterns.hasSearchable) {
+    components.push("Searchable modifier integration with suggestions and search scopes");
+  }
+  if (patterns.hasAsyncImage) {
+    components.push("AsyncImage wrapper with placeholder, loading, and error phase handling");
+  }
+
+  const motion: string[] = [];
+  if (patterns.hasAnimation) {
+    motion.push("Detected animation usage; keep transitions purposeful and aligned to system spring curves.");
+  }
+  motion.push(
+    "Use .spring() for interactive transitions and .easeInOut for content appearance.",
+    "Apply matchedGeometryEffect for hero transitions between list and detail views.",
+    "Honor UIAccessibility.isReduceMotionEnabled; gate decorative animations behind it."
+  );
+
+  const distinctiveTraits = [
+    "Consistent corner-radius and material treatment makes the interface feel integrated.",
+    "System + custom typography pairing for brand identity within platform conventions.",
+    "Signature card/surface layering and status badge treatment repeated across screens."
+  ];
+
+  const statesAndFeedback = [
+    "Define interactive states via ButtonStyle (pressed/disabled) and custom view modifiers",
+    "Use ProgressView with .task for async loading; show skeleton placeholders for content regions",
+    "Display actionable error views with retry action and error description",
+    "Include haptic feedback (UIImpactFeedbackGenerator) for significant state changes"
+  ];
+
+  return {
+    visualDirection: `Design system for ${framework}: platform-native ${framework} app with strong hierarchy, refined materials, and explicit state feedback.`,
+    styleLanguage,
+    colorPalette,
+    typography,
+    radiusSystem,
+    pageLayoutPatterns,
+    components,
+    motion,
+    distinctiveTraits,
+    statesAndFeedback
+  };
+}
+
 function fallbackStructuredPlan(
   stack: StackFingerprint,
   architecture: ArchitectureModel,
@@ -663,7 +884,9 @@ function fallbackStructuredPlan(
     interfaces: architecture.edges.map((edge) => `${edge.from} -> ${edge.to} (${edge.type})`),
     dataModels: safeList(intent.data_contracts),
     databaseDesign: inferDatabaseDesign(stack, intent),
-    designSystem: inferDesignSystem(snapshot, stack),
+    designSystem: isNativeMobileStack(stack)
+      ? inferSwiftUIDesignSystem(snapshot, stack)
+      : inferDesignSystem(snapshot, stack),
     behaviorRules: safeList([...intent.business_rules, ...intent.invariants]),
     buildSteps: [
       "Scaffold target repo and baseline tooling (lint/typecheck/test) before feature work.",
@@ -932,7 +1155,162 @@ function designCssBlueprint(tokens: VisualTokens, radii: RadiusScale, ui: UiPatt
   ].join("\n");
 }
 
-function renderDesignSystemMarkdown(designSystem: DesignSystemPlan, snapshot: RepoSnapshot): string {
+function designSwiftUIBlueprint(patterns: ReturnType<typeof detectSwiftUIPatternSignals>): string {
+  const navShell = patterns.hasTabView
+    ? [
+        "struct AppShell: View {",
+        "    var body: some View {",
+        "        TabView {",
+        '            HomeScreen().tabItem { Label("Home", systemImage: "house") }',
+        '            SearchScreen().tabItem { Label("Search", systemImage: "magnifyingglass") }',
+        '            ProfileScreen().tabItem { Label("Profile", systemImage: "person") }',
+        "        }",
+        "    }",
+        "}"
+      ]
+    : [
+        "struct AppShell: View {",
+        "    var body: some View {",
+        "        NavigationStack {",
+        "            ContentView()",
+        '                .navigationTitle("App")',
+        "                .toolbar {",
+        "                    ToolbarItem(placement: .topBarTrailing) {",
+        '                        Button("Action", systemImage: "plus") { }',
+        "                    }",
+        "                }",
+        "        }",
+        "    }",
+        "}"
+      ];
+
+  return [
+    "```swift",
+    "// MARK: - Color Tokens",
+    "extension Color {",
+    '    static let appPrimary = Color("Primary")       // Asset catalog',
+    '    static let appAccent = Color("Accent")',
+    '    static let appSurface = Color(.systemBackground)',
+    "    static let appSurfaceAlt = Color(.secondarySystemBackground)",
+    "    static let appText = Color(.label)",
+    "    static let appTextMuted = Color(.secondaryLabel)",
+    "    static let appBorder = Color(.separator)",
+    '    static let appSuccess = Color("Success")',
+    '    static let appWarning = Color("Warning")',
+    '    static let appDanger = Color("Danger")',
+    "}",
+    "",
+    "// MARK: - Radius Tokens",
+    "enum AppRadius {",
+    "    static let sm: CGFloat = 8",
+    "    static let md: CGFloat = 12",
+    "    static let lg: CGFloat = 16",
+    "    static let xl: CGFloat = 24",
+    "}",
+    "",
+    "// MARK: - Typography",
+    "extension Font {",
+    "    static let appTitle = Font.system(.title, weight: .bold)",
+    "    static let appHeadline = Font.system(.headline, weight: .semibold)",
+    "    static let appBody = Font.system(.body)",
+    "    static let appCaption = Font.system(.caption)",
+    "}",
+    "",
+    "// MARK: - Button Styles",
+    "struct PrimaryButtonStyle: ButtonStyle {",
+    "    func makeBody(configuration: Configuration) -> some View {",
+    "        configuration.label",
+    "            .font(.appHeadline)",
+    "            .foregroundStyle(.white)",
+    "            .padding(.horizontal, 16)",
+    "            .padding(.vertical, 10)",
+    "            .background(Color.appPrimary, in: RoundedRectangle(cornerRadius: AppRadius.md))",
+    "            .scaleEffect(configuration.isPressed ? 0.97 : 1)",
+    "            .animation(.spring(duration: 0.15), value: configuration.isPressed)",
+    "    }",
+    "}",
+    "",
+    "struct SurfaceCardModifier: ViewModifier {",
+    "    func body(content: Content) -> some View {",
+    "        content",
+    "            .background(.appSurface, in: RoundedRectangle(cornerRadius: AppRadius.lg))",
+    "            .overlay(RoundedRectangle(cornerRadius: AppRadius.lg).stroke(Color.appBorder, lineWidth: 0.5))",
+    "    }",
+    "}",
+    "",
+    "// MARK: - App Shell",
+    ...navShell,
+    "```"
+  ].join("\n");
+}
+
+function renderSwiftUIDesignSystemMarkdown(designSystem: DesignSystemPlan, snapshot: RepoSnapshot): string {
+  const patterns = detectSwiftUIPatternSignals(snapshot);
+
+  const layoutContract: string[] = [];
+  if (patterns.hasNavigationStack) {
+    layoutContract.push("Preserve NavigationStack-based navigation; use typed NavigationPath for programmatic push/pop.");
+  }
+  if (patterns.hasTabView) {
+    layoutContract.push("Preserve TabView as top-level section switcher; maintain badge support and state restoration.");
+  }
+  if (patterns.hasSheet) {
+    layoutContract.push("Use .sheet and detent configuration for modal presentations; avoid custom overlay replacements.");
+  }
+  if (patterns.hasToolbar) {
+    layoutContract.push("Keep toolbar-based action placement; use ToolbarItemGroup for related actions.");
+  }
+  if (patterns.hasSearchable) {
+    layoutContract.push("Retain .searchable modifier integration with suggestions and token-based filtering.");
+  }
+  if (!layoutContract.length) {
+    layoutContract.push("Use NavigationStack for primary navigation with platform-standard presentation patterns.");
+  }
+
+  return [
+    `#### Visual Direction`,
+    `- ${designSystem.visualDirection}`,
+    "",
+    "#### Color Tokens (SwiftUI-Native)",
+    markdownBullets(designSystem.colorPalette),
+    "",
+    "#### Typography (Dynamic Type)",
+    markdownBullets(designSystem.typography.slice(0, 3)),
+    "",
+    "#### Radius + Shape Tokens",
+    markdownBullets(designSystem.radiusSystem),
+    "",
+    "#### Component Styling Contract",
+    markdownBullets([
+      "Primary buttons: PrimaryButtonStyle with filled background, spring-press feedback, and disabled opacity.",
+      "Secondary buttons: bordered style with tint color and matching vertical rhythm.",
+      "Cards and surfaces: SurfaceCardModifier with system background, thin border, and consistent corner radius.",
+      "Form inputs: TextField styles with rounded border, @FocusState ring, and validation error display.",
+      "Lists: custom row ViewModifier with consistent padding, separator style, and swipe actions."
+    ]),
+    "",
+    "#### Layout + Navigation Contract",
+    markdownBullets(layoutContract),
+    "",
+    "#### Motion + Interaction",
+    markdownBullets([
+      ...designSystem.motion.slice(0, 3),
+      patterns.hasAnimation
+        ? "Detected animation usage in source; keep spring curves consistent and gate behind reduceMotion."
+        : "Use system spring curves for transitions; add haptic feedback for significant actions."
+    ]),
+    "",
+    "#### SwiftUI Blueprint (Reference Implementation)",
+    designSwiftUIBlueprint(patterns)
+  ].join("\n");
+}
+
+function renderDesignSystemMarkdown(designSystem: DesignSystemPlan, snapshot: RepoSnapshot, stack?: StackFingerprint): string {
+  // If this is a native mobile (iOS/Swift) project, render SwiftUI-native tokens instead of CSS
+  if (stack && isNativeMobileStack(stack)) {
+    return renderSwiftUIDesignSystemMarkdown(designSystem, snapshot);
+  }
+
   const tokens = pickVisualTokens(snapshot);
   const radii = pickRadiusScale(snapshot);
   const ui = detectUiPatternSignals(snapshot);
@@ -1117,10 +1495,22 @@ function renderPrompt(
     markdownBullets([
       `Repository: \`${snapshot.repo.owner}/${snapshot.repo.name}\``,
       `Branch analyzed: \`${snapshot.repo.branch}\``,
-      `Scan mode: \`${snapshot.metadata.scanMode}\` | sampled files: ${snapshot.metadata.selectedFiles} | token estimate: ${snapshot.metadata.tokenEstimate}`,
+      `Scan mode: \`${snapshot.metadata.scanMode}\` | depth strategy: \`${snapshot.metadata.depthStrategy}\` | sampled files: ${snapshot.metadata.selectedFiles} | token estimate: ${snapshot.metadata.tokenEstimate}`,
       `Target agent: \`${targetAgent}\``
     ]),
     "",
+    ...(snapshot.metadata.depthStrategy === "per-file"
+      ? [
+          "### Per-File Depth Analysis",
+          markdownBullets([
+            "Small repository detected: all source files included with increased per-file content budget.",
+            "Analysis depth shifted from file-count breadth to line-level depth per file.",
+            "Implementation plan should leverage complete source visibility for precise guidance: reference specific functions, types, and patterns observed in each file.",
+            "Build steps should include line-level migration/refactor instructions where applicable."
+          ]),
+          ""
+        ]
+      : []),
     "### Key Files Inspected",
     markdownBullets(inspectedArtifacts(snapshot)),
     "",
@@ -1154,7 +1544,7 @@ function renderPrompt(
     markdownBullets(structured.databaseDesign),
     "",
     "### Design System (Detailed, Implementable)",
-    renderDesignSystemMarkdown(structured.designSystem, snapshot),
+    renderDesignSystemMarkdown(structured.designSystem, snapshot, stack),
     "",
     "## Phase 3: Review",
     "### Alignment Checklist",
@@ -1205,7 +1595,10 @@ export async function compileExecutablePlan(
   targetAgent: TargetAgent
 ): Promise<ExecutablePlan> {
   const routeHints = inferRouteMap(snapshot, intent);
-  const designHints = inferDesignSystem(snapshot, stack);
+  const nativeMobile = isNativeMobileStack(stack);
+  const designHints = nativeMobile
+    ? inferSwiftUIDesignSystem(snapshot, stack)
+    : inferDesignSystem(snapshot, stack);
 
   const prompt = [
     "Return valid JSON only.",
@@ -1219,8 +1612,12 @@ export async function compileExecutablePlan(
     "- describe functionality logic and rule enforcement, not just feature names",
     "- if DB signals exist, include concrete schema/index/migration guidance",
     "- include a design system section with explicit style language, color tokens, radius scale, motion, and distinctive traits",
-    "- include concrete UI token guidance with hex colors and component styling behavior (buttons, forms, cards, overlays) instead of generic advice",
-    "- if the repository uses tailwind or shadcn, preserve utility-driven composition and component primitives in recommendations",
+    nativeMobile
+      ? "- this is a native iOS/Swift project: emit SwiftUI-native design tokens (Color extensions, Font system, ViewModifiers, ButtonStyles) instead of CSS custom properties or web-specific guidance"
+      : "- include concrete UI token guidance with hex colors and component styling behavior (buttons, forms, cards, overlays) instead of generic advice",
+    nativeMobile
+      ? "- if the project uses SwiftUI, describe view composition patterns (NavigationStack, TabView, sheets, toolbars) instead of web layout (HTML/CSS/flexbox/grid)"
+      : "- if the repository uses tailwind or shadcn, preserve utility-driven composition and component primitives in recommendations",
     "- structure detail so it can be rendered into a 4-phase plan workflow: initial understanding, design, review, and final implementation plan",
     "- include enough specificity for phase review: explicit constraints, assumptions, and actionable test criteria",
     "- keep context concise: avoid duplicating the same information across multiple sections",
@@ -1228,6 +1625,11 @@ export async function compileExecutablePlan(
     "- avoid placeholders like 'as needed'",
     "- keep string values concise (1-2 sentences max); routeMap entries limited to 10, moduleList to 10, buildSteps to 10",
     "- total JSON output MUST be under 9000 tokens; if approaching limit, prioritize route detail and build steps over verbose descriptions",
+    ...(snapshot.metadata.depthStrategy === "per-file"
+      ? [
+          "- DEPTH STRATEGY: per-file depth mode is active (small repo with all files sampled). Provide line-level implementation guidance: reference specific functions, types, and patterns from source. Build steps should be granular (per-function or per-type) rather than per-module."
+        ]
+      : []),
     "Artifacts:",
     JSON.stringify({
       stack: {
@@ -1241,6 +1643,7 @@ export async function compileExecutablePlan(
       intent,
       routeHints,
       designHints,
+      depthStrategy: snapshot.metadata.depthStrategy,
       targetAgent
     })
   ].join("\n\n");

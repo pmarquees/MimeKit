@@ -5,6 +5,9 @@ export const MODEL_VERSION = "1.0.0";
 export const scanModeSchema = z.enum(["quick", "deep"]);
 export type ScanMode = z.infer<typeof scanModeSchema>;
 
+export const depthStrategySchema = z.enum(["file-count", "per-file"]);
+export type DepthStrategy = z.infer<typeof depthStrategySchema>;
+
 export const targetAgentSchema = z.enum(["claude-code", "codex", "generic"]);
 export type TargetAgent = z.infer<typeof targetAgentSchema>;
 
@@ -40,6 +43,7 @@ export const repoSnapshotSchema = z.object({
   }),
   metadata: z.object({
     scanMode: scanModeSchema,
+    depthStrategy: depthStrategySchema.default("file-count"),
     fetchedAt: z.string(),
     totalFiles: z.number(),
     selectedFiles: z.number(),

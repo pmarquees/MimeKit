@@ -1,0 +1,33 @@
+# dependencies
+node_modules
+
+# build output
+.next
+
+# environment files
+.env
+.env.local
+
+# pipeline run artifacts
+.runs
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+
+# tooling
+.codex
+.vercel
+.git
+
+# tests (not needed in production)
+tests
+vitest.config.ts
+
+# build info
+tsconfig.tsbuildinfo

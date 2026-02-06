@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, extname, basename } from "node:path";
 import {
+  DepthStrategy,
   HarnessContext,
   RepoSnapshot,
   SelectedFile,
@@ -293,13 +294,28 @@ export async function runIngestStage(ctx: HarnessContext): Promise<RepoSnapshot>
     .filter((e) => reasonForFile(e.relPath))
     .map((e) => ({ ...e, reason: reasonForFile(e.relPath) as string }));
 
+  // Determine depth strategy: when the repo has fewer source files than
+  // quickTopFiles, deep mode shifts to per-file depth (line-level analysis)
+  // instead of broader file-count sampling.
+  const allSourceFiles = fileEntries.filter((e) => isSourceFile(e.relPath));
+  const isSmallRepo = allSourceFiles.length < LIMITS.quickTopFiles;
+  const depthStrategy: DepthStrategy =
+    ctx.scanMode === "deep" && isSmallRepo ? "per-file" : "file-count";
+
   // Select source code samples
-  const topN = ctx.scanMode === "quick" ? LIMITS.quickTopFiles : LIMITS.deepTopFiles;
-  const sourceCandidates = fileEntries
-    .filter((e) => isSourceFile(e.relPath))
-    .sort((a, b) => b.size - a.size)
-    .slice(0, topN)
-    .map((e) => ({ ...e, reason: "large source sample" }));
+  let sourceCandidates: Array<FileEntry & { reason: string }>;
+  if (depthStrategy === "per-file") {
+    // Small repo + deep mode: select ALL source files for per-file depth analysis
+    sourceCandidates = allSourceFiles
+      .sort((a, b) => b.size - a.size)
+      .map((e) => ({ ...e, reason: "per-file depth sample" }));
+  } else {
+    const topN = ctx.scanMode === "quick" ? LIMITS.quickTopFiles : LIMITS.deepTopFiles;
+    sourceCandidates = allSourceFiles
+      .sort((a, b) => b.size - a.size)
+      .slice(0, topN)
+      .map((e) => ({ ...e, reason: "large source sample" }));
+  }
 
   // Deduplicate and limit
   const seen = new Set<string>();
@@ -312,6 +328,10 @@ export async function runIngestStage(ctx: HarnessContext): Promise<RepoSnapshot>
   }
 
   // Read file contents
+  // Per-file depth mode: increase per-file byte budget for deeper line-level analysis
+  const effectiveMaxFileSize = depthStrategy === "per-file"
+    ? Math.min(maxFileSize * 2, LIMITS.maxFileBytes * 2)
+    : maxFileSize;
   const selectedFiles: SelectedFile[] = [];
   let skippedBinaryFiles = 0;
   let skippedScriptFiles = 0;
@@ -326,7 +346,7 @@ export async function runIngestStage(ctx: HarnessContext): Promise<RepoSnapshot>
       skippedScriptFiles++;
       continue;
     }
-    if (candidate.size > maxFileSize) {
+    if (candidate.size > effectiveMaxFileSize) {
       selectedFiles.push({
         path: candidate.relPath,
         size: candidate.size,
@@ -339,7 +359,7 @@ export async function runIngestStage(ctx: HarnessContext): Promise<RepoSnapshot>
 
     try {
       const raw = await readFile(candidate.absPath, "utf8");
-      const content = safeSnippet(raw, maxFileSize);
+      const content = safeSnippet(raw, effectiveMaxFileSize);
       const projected = tokenEstimate + estimateTokens(content);
       if (projected > LIMITS.maxSnapshotTokens) break;
 
@@ -411,6 +431,7 @@ export async function runIngestStage(ctx: HarnessContext): Promise<RepoSnapshot>
     repo: repoMeta,
     metadata: {
       scanMode: ctx.scanMode,
+      depthStrategy,
       fetchedAt: new Date().toISOString(),
       totalFiles: fileEntries.length,
       selectedFiles: selectedFiles.length,
