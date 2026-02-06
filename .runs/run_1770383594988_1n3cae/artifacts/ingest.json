@@ -1,0 +1,81 @@
+{
+  "version": "1.0.0",
+  "repo": {
+    "url": "https://github.com/pmarquees/mysite",
+    "owner": "pmarquees",
+    "name": "mysite",
+    "branch": "master",
+    "defaultBranch": "master",
+    "sizeKb": 252,
+    "stars": 0,
+    "openIssues": 0,
+    "description": "my personal website",
+    "language": "CSS"
+  },
+  "metadata": {
+    "scanMode": "quick",
+    "fetchedAt": "2026-02-06T13:13:16.217Z",
+    "totalFiles": 7,
+    "selectedFiles": 1,
+    "skippedBinaryFiles": 0,
+    "skippedScriptFiles": 0,
+    "tokenEstimate": 86
+  },
+  "languages": [
+    {
+      "name": "CSS",
+      "bytes": 857,
+      "share": 1
+    }
+  ],
+  "fileTree": [
+    {
+      "path": "README.md",
+      "type": "blob",
+      "size": 347
+    },
+    {
+      "path": "fonts",
+      "type": "tree"
+    },
+    {
+      "path": "fonts/.DS_Store",
+      "type": "blob",
+      "size": 6148
+    },
+    {
+      "path": "fonts/bold.otf",
+      "type": "blob",
+      "size": 63808
+    },
+    {
+      "path": "fonts/reg.otf",
+      "type": "blob",
+      "size": 62892
+    },
+    {
+      "path": "fonts/thin.otf",
+      "type": "blob",
+      "size": 61828
+    },
+    {
+      "path": "index.html",
+      "type": "blob",
+      "size": 996
+    },
+    {
+      "path": "style.css",
+      "type": "blob",
+      "size": 857
+    }
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "size": 347,
+      "reason": "project readme",
+      "content": "mysite\n======\nHey! This is the repository of my own website, I like do share it with you,\nif you see anything who can be enhanced or anything, let me know!\n\n--\n\nOi! Este é o repositório do meu site pessoal, eu gostaria de compartilhar com vocês! Se você ver qualquer coisa\nque possa ser melhorada, me diga!\n\n\nSee ya folks.\nmy personal website\n",
+      "truncated": false
+    }
+  ]
+}

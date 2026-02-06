@@ -1,0 +1,168 @@
+{
+  "version": "1.0.0",
+  "repo": {
+    "url": "https://github.com/pmarquees/todaylastyear",
+    "owner": "pmarquees",
+    "name": "todaylastyear",
+    "branch": "main",
+    "defaultBranch": "main",
+    "sizeKb": 797,
+    "stars": 0,
+    "openIssues": 0,
+    "language": "Swift"
+  },
+  "metadata": {
+    "scanMode": "deep",
+    "fetchedAt": "2026-02-06T14:53:11.182Z",
+    "totalFiles": 13,
+    "selectedFiles": 3,
+    "skippedBinaryFiles": 0,
+    "skippedScriptFiles": 0,
+    "tokenEstimate": 3243
+  },
+  "languages": [
+    {
+      "name": "Swift",
+      "bytes": 12957,
+      "share": 1
+    }
+  ],
+  "fileTree": [
+    {
+      "path": "README.md",
+      "type": "blob",
+      "size": 15
+    },
+    {
+      "path": "todaylastyear",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear/Assets.xcassets",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear/Assets.xcassets/AccentColor.colorset",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear/Assets.xcassets/AccentColor.colorset/Contents.json",
+      "type": "blob",
+      "size": 123
+    },
+    {
+      "path": "todaylastyear/Assets.xcassets/AppIcon.appiconset",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear/Assets.xcassets/AppIcon.appiconset/Contents.json",
+      "type": "blob",
+      "size": 211
+    },
+    {
+      "path": "todaylastyear/Assets.xcassets/AppIcon.appiconset/Frame 7.png",
+      "type": "blob",
+      "size": 806097
+    },
+    {
+      "path": "todaylastyear/Assets.xcassets/Contents.json",
+      "type": "blob",
+      "size": 63
+    },
+    {
+      "path": "todaylastyear/ContentView.swift",
+      "type": "blob",
+      "size": 12559
+    },
+    {
+      "path": "todaylastyear/Info.plist",
+      "type": "blob",
+      "size": 346
+    },
+    {
+      "path": "todaylastyear/Preview Content",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear/Preview Content/Preview Assets.xcassets",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear/Preview Content/Preview Assets.xcassets/Contents.json",
+      "type": "blob",
+      "size": 63
+    },
+    {
+      "path": "todaylastyear/todaylastyearApp.swift",
+      "type": "blob",
+      "size": 398
+    },
+    {
+      "path": "todaylastyear.xcodeproj",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear.xcodeproj/project.pbxproj",
+      "type": "blob",
+      "size": 13343
+    },
+    {
+      "path": "todaylastyear.xcodeproj/project.xcworkspace",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear.xcodeproj/project.xcworkspace/contents.xcworkspacedata",
+      "type": "blob",
+      "size": 135
+    },
+    {
+      "path": "todaylastyear.xcodeproj/project.xcworkspace/xcshareddata",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist",
+      "type": "blob",
+      "size": 238
+    },
+    {
+      "path": "todaylastyear.xcodeproj/xcuserdata",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear.xcodeproj/xcuserdata/pedromarques.xcuserdatad",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear.xcodeproj/xcuserdata/pedromarques.xcuserdatad/xcschemes",
+      "type": "tree"
+    },
+    {
+      "path": "todaylastyear.xcodeproj/xcuserdata/pedromarques.xcuserdatad/xcschemes/xcschememanagement.plist",
+      "type": "blob",
+      "size": 348
+    }
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "size": 15,
+      "reason": "project readme",
+      "content": "# todaylastyear",
+      "truncated": false
+    },
+    {
+      "path": "todaylastyear/ContentView.swift",
+      "size": 12559,
+      "reason": "large source sample",
+      "content": "import SwiftUI\nimport CoreLocation\n\nstruct ContentView: View {\n    @StateObject private var weatherViewModel = WeatherViewModel()\n    @State private var selection = 0\n\n    var body: some View {\n        TabView(selection: $selection) {\n            VStack(spacing: 20) {\n                // Location and Date\n                VStack {\n                    Text(weatherViewModel.locationName ?? \"Locating...\")\n                        .font(.largeTitle)\n                        .bold()\n                    Text(formattedDate())\n                        .font(.headline)\n                }\n                .padding(.top)\n\n                // Current Weather\n                Text(weatherViewModel.currentWeather?.description ?? \"Loading...\")\n                    .font(.title2)\n\n                // Temperature Comparison\n                HStack(spacing: 30) {\n                    TemperatureView(title: \"Today\", temperature: weatherViewModel.currentTemperature ?? 0)\n                    TemperatureView(title: \"Last Year\", temperature: weatherViewModel.lastYearTemperature ?? 0)\n                }\n                .padding()\n\n                // Daily Summary\n                Text(\"Daily Summary\")\n                    .font(.headline)\n                    .padding(.top)\n                Text(dailySummary())\n                    .multilineTextAlignment(.center)\n                    .padding(.horizontal)\n\n                // Additional Weather Info\n                HStack(spacing: 30) {\n                    WeatherInfoView(iconName: \"wind\", value: \"\\(Int(weatherViewModel.currentWeather?.windspeed ?? 0))km/h\", title: \"Wind\")\n                    WeatherInfoView(iconName: \"drop.fill\", value: \"48%\", title: \"Humidity\")\n                    WeatherInfoView(iconName: \"eye.fill\", value: \"1.6km\", title: \"Visibility\")\n                }\n                .padding()\n\n            }\n            .background(Color.white.opacity(0.2))\n            .tabItem {\n                Image(systemName: \"sun.max.fill\")\n                Text(\"Today\")\n            }\n            .tag(0)\n\n            // Weekly Comparison Tab\n            List {\n                if weatherViewModel.weeklyComparison.isEmpty {\n                    ProgressView(\"Fetching Data...\")\n                } else {\n                    ForEach(weatherViewModel.weeklyComparison, id: \\.date) { data in\n                        HStack {\n                            Text(data.dateFormatted)\n                            Spacer()\n                            Text(\"Now: \\(String(format: \"%.1f\", data.currentTemp))°C\")\n                            Text(\"Last Year: \\(String(format: \"%.1f\", data.lastYearTemp))°C\")\n                        }\n                    }\n                }\n            }\n            .tabItem {\n                Image(systemName: \"calendar\")\n                Text(\"Last 7 Days\")\n            }\n            .tag(1)\n        }\n        .accentColor(.black)\n        .onAppear {\n            weatherViewModel.requestLocation()\n        }\n    }\n\n    private func formattedDate() -> String {\n        let dateFormatter = DateFormatter()\n        dateFormatter.dateFormat = \"EEEE, d MMMM\"\n        return dateFormatter.string(from: Date())\n    }\n\n    private func dailySummary() -> String {\n        guard let current = weatherViewModel.currentTemperature,\n              let lastYear = weatherViewModel.lastYearTemperature else {\n            return \"Loading weather information...\"\n        }\n        \n        let difference = current - lastYear\n        let comparisonText: String\n        \n        if difference > 0 {\n            comparisonText = \"colder than\"\n        } else if difference < 0 {\n            comparisonText = \"hotter than\"\n        } else {\n            comparisonText = \"the same as\"\n        }\n        \n        return \"Last year it was +\\(Int(lastYear))°, which is \\(comparisonText) today by \\(abs(Int(difference)))°.\"\n    }\n}\n\nstruct TemperatureView: View {\n    let title: String\n    let temperature: Double\n\n    var body: some View {\n        VStack {\n            Text(title)\n                .font(.headline)\n            Text(\"\\(Int(temperature))°\")\n                .font(.system(size: 60, weight: .bold))\n        }\n    }\n}\n\nstruct WeatherInfoView: View {\n    let iconName: String\n    let value: String\n    let title: String\n\n    var body: some View {\n        VStack {\n            Image(systemName: iconName)\n            Text(value)\n                .font(.headline)\n            Text(title)\n                .font(.caption)\n        }\n    }\n}\n\nstruct DayForecastView: View {\n    let date: Date\n    let temperature: Double\n\n    var body: some View {\n        VStack {\n            Text(\"\\(Int(temperature))°\")\n                .font(.title3)\n            Image(systemName: \"sun.max.fill\")\n                .foregroundColor(.yellow)\n            Text(formattedDate())\n                .font(.caption)\n        }\n        .padding()\n        .background(Color.white.opacity(0.2))\n        .cornerRadius(10)\n    }\n\n    private func formattedDate() -> String {\n        let dateFormatter = DateFormatter()\n        dateFormatter.dateFormat = \"d MMM\"\n        return dateFormatter.string(from: date)\n    }\n}\n\nclass WeatherViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {\n    @Published var locationName: String?\n    @Published var currentTemperature: Double?\n    @Published var lastYearTemperature: Double?\n    @Published var currentWeather: CurrentWeather?\n    @Published var weeklyComparison: [WeatherComparison] = []\n\n    private let locationManager = CLLocationManager()\n    private var latitude: Double?\n    private var longitude: Double?\n\n    override init() {\n        super.init()\n        locationManager.delegate = self\n    }\n\n    func requestLocation() {\n        locationManager.requestWhenInUseAuthorization()\n        locationManager.startUpdatingLocation()\n    }\n\n    // CLLocationManagerDelegate Methods\n    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {\n        if let location = locations.first {\n            latitude = location.coordinate.latitude\n            longitude = location.coordinate.longitude\n\n            fetchLocationName(location: location)\n            fetchWeatherData()\n            fetchWeeklyComparison()\n\n            locationManager.stopUpdatingLocation()\n        }\n    }\n\n    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {\n        print(\"Failed to get user location: \\(error.localizedDescription)\")\n    }\n\n    // Fetch location name using reverse geocoding\n    private func fetchLocationName(location: CLLocation) {\n        let geocoder = CLGeocoder()\n        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in\n            if let placemark = placemarks?.first {\n                self?.locationName = placemark.locality ?? \"Your Location\"\n            } else {\n                self?.locationName = \"Your Location\"\n            }\n        }\n    }\n\n    private func fetchWeatherData() {\n        guard let latitude = latitude, let longitude = longitude else { return }\n\n        let today = Date()\n        let lastYear = Calendar.current.date(byAdding: .year, value: -1, to: today)!\n\n        let dateFormatter = DateFormatter()\n        dateFormatter.dateFormat = \"yyyy-MM-dd\"\n\n        let todayStr = dateFormatter.string(from: today)\n        let lastYearStr = dateFormatter.string(from: lastYear)\n\n        let currentWeatherURL = \"https://api.open-meteo.com/v1/forecast?latitude=\\(latitude)&longitude=\\(longitude)&current_weather=true\"\n\n        let historicalWeatherURL = \"https://archive-api.open-meteo.com/v1/archive?latitude=\\(latitude)&longitude=\\(longitude)&start_date=\\(lastYearStr)&end_date=\\(lastYearStr)&hourly=temperature_2m\"\n\n        // Fetch current weather\n        fetchData(from: currentWeatherURL) { [weak self] (data: CurrentWeatherResponse?) in\n            DispatchQueue.main.async {\n                if let currentWeather = data?.current_weather {\n                    self?.currentTemperature = currentWeather.temperature\n                    self?.currentWeather = currentWeather\n                }\n            }\n        }\n\n        // Fetch last year's weather\n        fetchData(from: historicalWeatherURL) { [weak self] (data: HistoricalWeatherResponse?) in\n            DispatchQueue.main.async {\n                if let temperature = data?.hourly.temperature_2m.first {\n                    self?.lastYearTemperature = temperature\n                }\n            }\n        }\n    }\n\n    private func fetchWeeklyComparison() {\n        guard let latitude = latitude, let longitude = longitude else { return }\n\n        let dateFormatter = DateFormatter()\n        dateFormatter.dateFormat = \"yyyy-MM-dd\"\n\n        let group = DispatchGroup()\n\n        var comparisons: [WeatherComparison] = []\n\n        for i in 1...7 {\n            if let date = Calendar.current.date(byAdding: .day, value: -i, to: Date()),\n               let lastYearDate = Calendar.current.date(byAdding: .year, value: -1, to: date) {\n\n                let dateStr = dateFormatter.string(from: date)\n                let lastYearDateStr = dateFormatter.string(from: lastYearDate)\n\n                let currentURL = \"https://archive-api.open-meteo.com/v1/archive?latitude=\\(latitude)&longitude=\\(longitude)&start_date=\\(dateStr)&end_date=\\(dateStr)&hourly=temperature_2m\"\n\n                let lastYearURL = \"https://archive-api.open-meteo.com/v1/archive?latitude=\\(latitude)&longitude=\\(longitude)&start_date=\\(lastYearDateStr)&end_date=\\(lastYearDateStr)&hourly=temperature_2m\"\n\n                group.enter()\n                var currentTemp: Double?\n                var lastYearTemp: Double?\n\n                // Fetch current day's historical data\n                fetchData(from: currentURL) { (data: HistoricalWeatherResponse?) in\n                    currentTemp = data?.hourly.temperature_2m.first\n                    checkCompletion()\n                }\n\n                // Fetch last year's data\n                fetchData(from: lastYearURL) { (data: HistoricalWeatherResponse?) in\n                    lastYearTemp = data?.hourly.temperature_2m.first\n                    checkCompletion()\n                }\n\n                func checkCompletion() {\n                    if let currentTemp = currentTemp, let lastYearTemp = lastYearTemp {\n                        let comparison = WeatherComparison(\n                            date: date,\n                            currentTemp: currentTemp,\n                            lastYearTemp: lastYearTemp\n                        )\n                        comparisons.append(comparison)\n                        group.leave()\n                    }\n                }\n            }\n        }\n\n        group.notify(queue: .main) { [weak self] in\n            self?.weeklyComparison = comparisons.sorted { $0.date > $1.date }\n        }\n    }\n\n    // Generic network request function\n    private func fetchData<T: Decodable>(from urlString: String, completion: @escaping (T?) -> Void) {\n        guard let url = URL(string: urlString) else { return }\n\n        URLSession.shared.dataTask(with: url) { data, response, error in\n            guard let data = data else {\n                print(\"Network error: \\(error?.localizedDescription ?? \"Unknown error\")\")\n                completion(nil)\n                return\n            }\n\n            do {\n                let decoded = try JSONDecoder().decode(T.self, from: data)\n                completion(decoded)\n            } catch {\n                print(\"Decoding error: \\(error.localizedDescription)\")\n                completion(nil)\n            }\n        }.resume()\n    }\n}\n\n// Models\nstruct CurrentWeatherResponse: Decodable {\n    let current_weather: CurrentWeather\n}\n\nstruct CurrentWeather: Decodable {\n    let temperature: Double\n    let windspeed: Double\n    let winddirection: Double\n    var description: String {\n        // You can add logic here to determine the weather description based on the data\n        return \"Sunny\" // Placeholder\n    }\n}\n\nstruct HistoricalWeatherResponse: Decodable {\n    let hourly: HourlyData\n}\n\nstruct HourlyData: Decodable {\n    let time: [String]\n    let temperature_2m: [Double]\n}\n\nstruct WeatherComparison {\n    let date: Date\n    let currentTemp: Double\n    let lastYearTemp: Double\n\n    var dateFormatted: String {\n        let formatter = DateFormatter()\n        formatter.dateFormat = \"MMM dd\"\n        return formatter.string(from: date)\n    }\n}\n\n// Entry Point\n@main\nstruct TodayLastYearApp: App {\n    var body: some Scene {\n        WindowGroup {\n            ContentView()\n        }\n    }\n}\n",
+      "truncated": false
+    },
+    {
+      "path": "todaylastyear/todaylastyearApp.swift",
+      "size": 398,
+      "reason": "large source sample",
+      "content": "//\n//  ContentView.swift\n//  todaylastyear\n//\n//  Created by Pedro Marques on 06/10/2024.\n//\n\nimport SwiftUI\n\nstruct ContentView: View {\n    var body: some View {\n        VStack {\n            Image(systemName: \"globe\")\n                .imageScale(.large)\n                .foregroundStyle(.tint)\n            Text(\"Hello, world!\")\n        }\n        .padding()\n    }\n}\n\n#Preview {\n    ContentView()\n}\n",
+      "truncated": false
+    }
+  ]
+}
