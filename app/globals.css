@@ -105,7 +105,7 @@ select {
   flex-direction: column;
   gap: 14px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   transition: filter 0.18s ease, opacity 0.18s ease;
 }
 
@@ -131,6 +131,7 @@ select {
   align-items: center;
   justify-content: center;
   padding: 20px;
+  overflow: hidden;
   background-image: repeating-linear-gradient(
     -45deg,
     rgba(255, 255, 255, 0.84),
@@ -168,6 +169,113 @@ select {
   letter-spacing: 0.08em;
   color: var(--text-secondary);
   animation: dither-flicker 0.16s steps(2, end) infinite;
+}
+
+/* ── "what" tab ── */
+
+.what-tab {
+  position: absolute;
+  top: 28px;
+  right: -1px;
+  transform: translateX(100%);
+  background: #fff;
+  border: 1px solid var(--grid-line);
+  border-left: none;
+  padding: 20px 10px;
+  font-size: 10px;
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transition: color 0.2s, background 0.2s;
+  z-index: 4;
+  white-space: nowrap;
+}
+
+.what-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hakuji);
+}
+
+.what-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.what-tab-active {
+  color: var(--text-primary);
+  background: var(--bg-kinariro);
+}
+
+/* ── content swap ── */
+
+.what-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: opacity 0.25s ease, filter 0.25s ease;
+}
+
+.what-content-hidden {
+  position: absolute;
+  inset: 28px;
+  opacity: 0;
+  pointer-events: none;
+  filter: blur(2px);
+}
+
+.what-content-dithering {
+  opacity: 0.3;
+  filter: blur(1px);
+}
+
+/* ── dither transition overlay ── */
+
+.what-dither-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  animation: what-overlay-in 0.15s ease-out;
+}
+
+.what-dither-line {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+  animation: dither-flicker 0.12s steps(2, end) infinite;
+}
+
+/* ── explanation panel ── */
+
+.what-explain {
+  justify-content: center;
+  min-height: 260px;
+}
+
+.what-explain-body {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 560px;
+}
+
+@keyframes what-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .intake-logo-wrap {
