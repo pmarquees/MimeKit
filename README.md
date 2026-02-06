@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://mimekit.vercel.app/mimickit-logo.png" alt="MimicKit Logo" width="100" height="100"/>
+</p>
+
 # Mimekit
 
 MimeKit analyzes public GitHub repositories (or local repos) and generates an executable implementation blueprint -- a detailed plan that a coding agent (Claude Code, Codex, etc.) can follow to recreate the project from scratch.
