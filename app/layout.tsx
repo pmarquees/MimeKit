@@ -6,6 +6,7 @@ import { PageBootLoader } from "@/components/page-boot-loader";
 export const metadata: Metadata = {
   title: "MimicKit",
   description: "Behavioral transpiler for software systems. Extract architecture, intent, and executable plans from any codebase.",
+  metadataBase: new URL("https://mimekit.vercel.app"),
   openGraph: {
     title: "MimicKit",
     description: "Behavioral transpiler for software systems. Extract architecture, intent, and executable plans from any codebase.",
