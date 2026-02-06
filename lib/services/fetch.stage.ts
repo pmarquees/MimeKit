@@ -48,6 +48,9 @@ export async function runFetchStage(ctx: HarnessContext): Promise<FetchArtifact>
 }
 
 export async function isGitAvailable(): Promise<boolean> {
+  // Vercel serverless functions don't have git installed
+  if (process.env.VERCEL) return false;
+
   try {
     const git = simpleGit();
     await git.version();
