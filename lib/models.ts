@@ -214,6 +214,56 @@ export const runResultSchema = z.object({
 });
 export type RunResult = z.infer<typeof runResultSchema>;
 
+// ---------------------------------------------------------------------------
+// Harness: source descriptors, context, fetch artifact
+// ---------------------------------------------------------------------------
+
+export const githubSourceSchema = z.object({
+  type: z.literal("github"),
+  repoUrl: z.string().url(),
+  ref: z.string().optional()
+});
+export type GitHubSource = z.infer<typeof githubSourceSchema>;
+
+export const localSourceSchema = z.object({
+  type: z.literal("local"),
+  repoPath: z.string(),
+  ref: z.string().optional()
+});
+export type LocalSource = z.infer<typeof localSourceSchema>;
+
+export const pipelineSourceSchema = z.discriminatedUnion("type", [
+  githubSourceSchema,
+  localSourceSchema
+]);
+export type PipelineSource = z.infer<typeof pipelineSourceSchema>;
+
+export const fetchArtifactSchema = z.object({
+  runId: z.string(),
+  repoUrl: z.string().url(),
+  ref: z.string(),
+  commitSha: z.string().regex(/^[0-9a-f]{5,40}$/),
+  workspacePath: z.string()
+});
+export type FetchArtifact = z.infer<typeof fetchArtifactSchema>;
+
+export type HarnessContext = {
+  runId: string;
+  source: PipelineSource;
+  workspacePath: string;
+  artifactsPath: string;
+  scanMode: ScanMode;
+  githubToken?: string;
+  runtimeOptions: {
+    cleanupWorkspace: boolean;
+    enableBuildExecution: boolean;
+  };
+};
+
+// ---------------------------------------------------------------------------
+// API request schemas
+// ---------------------------------------------------------------------------
+
 export const analyzeRequestSchema = z.object({
   repoUrl: z.string().url(),
   branch: z.string().optional(),

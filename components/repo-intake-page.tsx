@@ -13,7 +13,8 @@ type LocalStage = {
 };
 
 const stagedTemplate: LocalStage[] = [
-  { id: "intake", label: "Repo intake", status: "pending" },
+  { id: "fetch", label: "Fetch repository", status: "pending" },
+  { id: "ingest", label: "Ingest workspace", status: "pending" },
   { id: "stack", label: "Stack detection", status: "pending" },
   { id: "arch", label: "Architecture extraction", status: "pending" },
   { id: "intent", label: "Intent extraction", status: "pending" },

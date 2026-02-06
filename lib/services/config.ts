@@ -21,3 +21,15 @@ export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5
 export const ANTHROPIC_API_BASE = process.env.ANTHROPIC_API_BASE ?? "https://api.anthropic.com/v1";
 export const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 export const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+
+export const HARNESS = {
+  github: {
+    shallowCloneDepth: readInt("HARNESS_CLONE_DEPTH", 1),
+    cleanupWorkspace: process.env.HARNESS_CLEANUP_WORKSPACE === "true"
+  },
+  enableBuildExecution: false,
+  ingest: {
+    maxFileSizeBytes: readInt("HARNESS_MAX_FILE_SIZE", 120_000),
+    maxBinarySizeBytes: readInt("HARNESS_MAX_BINARY_SIZE", 0)
+  }
+} as const;

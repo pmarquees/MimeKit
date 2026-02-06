@@ -2,6 +2,7 @@ import { z, ZodTypeAny } from "zod";
 import { ANTHROPIC_API_BASE, ANTHROPIC_KEY, ANTHROPIC_MODEL } from "@/lib/services/config";
 
 const RETRY_COUNT = 2;
+const RETRY_DELAY_MS = 15_000; // Wait between retries (rate limits are per-minute)
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -57,7 +58,12 @@ function parseAndValidate<TSchema extends z.ZodTypeAny>(
   return schema.parse(normalized);
 }
 
-async function callAnthropic(prompt: string): Promise<string> {
+const DEFAULT_MAX_TOKENS = 8192;
+
+// Anthropic gateway drops connections around 300s; set our timeout below that
+const FETCH_TIMEOUT_MS = 240_000;
+
+async function callAnthropic(prompt: string, maxTokens = DEFAULT_MAX_TOKENS): Promise<string> {
   if (!ANTHROPIC_KEY) {
     throw new Error("ANTHROPIC_API_KEY is not configured.");
   }
@@ -71,11 +77,12 @@ async function callAnthropic(prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 4000,
+      max_tokens: maxTokens,
       system:
         "You are a strict JSON API. Return only valid JSON. Do not include markdown fences, comments, or prose.",
       messages: [{ role: "user", content: prompt }]
-    })
+    }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
   });
 
   if (!response.ok) {
@@ -85,11 +92,17 @@ async function callAnthropic(prompt: string): Promise<string> {
 
   const data = (await response.json()) as {
     content?: Array<{ type: string; text?: string }>;
+    stop_reason?: string;
   };
 
   const text = data.content?.find((item) => item.type === "text")?.text;
   if (!text) {
     throw new Error("Anthropic response did not contain text content.");
+  }
+
+  // Warn if output was truncated by max_tokens
+  if (data.stop_reason === "max_tokens") {
+    console.warn(`[anthropic] response truncated at max_tokens=${maxTokens}`);
   }
 
   return text;
@@ -99,7 +112,9 @@ export async function callClaudeJson<TSchema extends z.ZodTypeAny>(
   prompt: string,
   schema: TSchema,
   fallback: () => z.output<TSchema>,
-  retries = RETRY_COUNT
+  retries = RETRY_COUNT,
+  label = "unknown",
+  maxTokens = DEFAULT_MAX_TOKENS
 ): Promise<z.output<TSchema>> {
   const safeFallback = (): z.output<TSchema> => {
     const value = fallback();
@@ -107,22 +122,36 @@ export async function callClaudeJson<TSchema extends z.ZodTypeAny>(
   };
 
   if (!ANTHROPIC_KEY) {
+    console.warn(`[${label}] ANTHROPIC_API_KEY not set, using fallback`);
     return safeFallback();
   }
 
   let lastError: unknown;
+  const promptChars = prompt.length;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      const raw = await callAnthropic(prompt);
+      const raw = await callAnthropic(prompt, maxTokens);
       const candidate = extractJsonCandidate(raw);
       return parseAndValidate(candidate, schema);
     } catch (error) {
       lastError = error;
+      const errMsg = errorMessage(error);
+      console.warn(
+        `[${label}] attempt ${attempt + 1}/${retries + 1} failed (prompt: ${promptChars} chars): ${errMsg}`
+      );
+      // Backoff on rate-limit, server errors, or network failures
+      const shouldBackoff = errMsg.includes("429") || errMsg.includes("529") || errMsg.includes("500")
+        || errMsg.includes("fetch failed") || errMsg.includes("TimeoutError") || errMsg.includes("timed out");
+      if (attempt < retries && shouldBackoff) {
+        const delay = RETRY_DELAY_MS * (attempt + 1);
+        console.warn(`[${label}] waiting ${delay / 1000}s before retry...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
   }
 
-  console.warn(`Claude JSON call failed, using fallback: ${errorMessage(lastError)}`);
+  console.warn(`[${label}] all ${retries + 1} attempts failed, using fallback. Last error: ${errorMessage(lastError)}`);
   return safeFallback();
 }
 

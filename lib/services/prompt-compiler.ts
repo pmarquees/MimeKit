@@ -36,7 +36,11 @@ function markdownBullets(items: string[]): string {
 }
 
 function markdownNumbers(items: string[]): string {
-  return items.map((item, index) => `${index + 1}. ${item}`).join("\n");
+  return items.map((item, index) => {
+    // Strip leading "N. " if Claude already numbered the step
+    const cleaned = item.replace(/^\d+\.\s*/, "");
+    return `${index + 1}. ${cleaned}`;
+  }).join("\n");
 }
 
 function unique(items: string[]): string[] {
@@ -49,6 +53,40 @@ function unique(items: string[]): string[] {
     result.push(key);
   }
   return result;
+}
+
+function sanitizeOverview(text: string): string {
+  // Strip HTML tags
+  let cleaned = text.replace(/<[^>]+>/g, "");
+  // Strip markdown image syntax ![alt](url)
+  cleaned = cleaned.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
+  // Collapse multiple newlines
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
+  // Trim leading whitespace and headings that are just "#"
+  cleaned = cleaned
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      if (!t) return false;
+      if (/^#+\s*$/.test(t)) return false;
+      return true;
+    })
+    .join("\n")
+    .trim();
+  // Truncate at sentence boundary
+  if (cleaned.length > 500) {
+    const truncated = cleaned.slice(0, 500);
+    const lastPeriod = truncated.lastIndexOf(".");
+    const lastNewline = truncated.lastIndexOf("\n\n");
+    const cutAt = Math.max(lastPeriod, lastNewline);
+    if (cutAt > 200) {
+      cleaned = truncated.slice(0, cutAt + 1).trim();
+    } else {
+      const lastSpace = truncated.lastIndexOf(" ");
+      cleaned = (lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated).trim() + "...";
+    }
+  }
+  return cleaned;
 }
 
 function parsePackageDeps(snapshot: RepoSnapshot): Record<string, string> {
@@ -335,13 +373,49 @@ function routePurposeForPath(path: string, intent: IntentSpec): string {
   if (hasRouteSegment(path, ["api"])) {
     return "Exposes server interface for structured requests and domain operations.";
   }
-
-  const firstFlow = intent.user_flows[0];
-  if (firstFlow) {
-    return `Supports user flow: ${firstFlow}`;
+  if (hasRouteSegment(path, ["compose", "new", "create"])) {
+    return "Content creation and editing workflow.";
+  }
+  if (hasRouteSegment(path, ["notification", "notifications"])) {
+    return "Displays activity notifications and updates.";
+  }
+  if (hasRouteSegment(path, ["setting", "settings"])) {
+    return "User or application settings management.";
+  }
+  if (hasRouteSegment(path, ["admin"])) {
+    return "Administrative management and configuration.";
+  }
+  if (hasRouteSegment(path, ["invite"])) {
+    return "Processes team or user invitation.";
+  }
+  if (hasRouteSegment(path, ["deactivated", "disabled", "banned"])) {
+    return "Displays account status restriction.";
+  }
+  if (hasRouteSegment(path, ["search"])) {
+    return "Search interface for finding content.";
+  }
+  if (hasRouteSegment(path, ["profile", "user"])) {
+    return "Displays user profile and activity.";
+  }
+  if (hasRouteSegment(path, ["reset", "forgot", "password"])) {
+    return "Account recovery and password management.";
   }
 
-  return "Supports primary business flow inferred from system intent.";
+  // Try to match a relevant user flow from intent
+  const segments = path.split("/").filter(Boolean).map((s) => s.replace(/^\[|\]$/g, "").toLowerCase());
+  for (const flow of intent.user_flows) {
+    const flowLower = flow.toLowerCase();
+    if (segments.some((seg) => seg.length > 2 && flowLower.includes(seg))) {
+      return `Supports user flow: ${flow}`;
+    }
+  }
+
+  // Detail route (dynamic segment)
+  if (path.includes("[")) {
+    return "Detail view for a specific resource.";
+  }
+
+  return "Supports primary application workflow.";
 }
 
 function routeComponentsForPath(path: string, sourceContent?: string): string[] {
@@ -983,7 +1057,7 @@ function implementationPromptBlock(
     "3. Apply the specified design tokens and component recipes consistently.",
     "",
     "## Objective",
-    structured.systemOverview,
+    sanitizeOverview(structured.systemOverview),
     "",
     "## Route Fidelity Requirements",
     routePromptLines || "- /: define route layout and components.",
@@ -1026,12 +1100,14 @@ function renderPrompt(
     .map((component) => `${component.name} (${component.role}) -> ${component.tech.slice(0, 3).join(", ")}`)
     .filter(Boolean);
 
+  const cleanOverview = sanitizeOverview(structured.systemOverview);
+
   return [
     `# Plan: ${snapshot.repo.name} Implementation Blueprint`,
     "",
     "## TL;DR",
     markdownBullets([
-      `Goal: ${structured.systemOverview}`,
+      `Goal: ${cleanOverview}`,
       "Recommended approach: incremental implementation aligned to existing architecture boundaries and route-level layout fidelity.",
       "This plan is intentionally concise on context and verbose on implementation details, design fidelity, and UI behavior."
     ]),
@@ -1110,7 +1186,11 @@ function renderPrompt(
     markdownBullets(structured.testExpectations),
     "",
     "### Rollout and Migration Notes",
-    markdownBullets(unique([...structured.databaseDesign, ...structured.constraints]).slice(0, 10)),
+    markdownBullets(
+      unique(structured.databaseDesign)
+        .filter((item) => !requirementLines.includes(item) && !trimmedDataModels.includes(item))
+        .slice(0, 6)
+    ),
     "",
     "## Implementation Prompt (LLM Ready)",
     implementationPromptBlock(structured, targetAgent, snapshot)
@@ -1146,6 +1226,8 @@ export async function compileExecutablePlan(
     "- keep context concise: avoid duplicating the same information across multiple sections",
     "- derive from architecture + intent + inferred route/design hints",
     "- avoid placeholders like 'as needed'",
+    "- keep string values concise (1-2 sentences max); routeMap entries limited to 10, moduleList to 10, buildSteps to 10",
+    "- total JSON output MUST be under 9000 tokens; if approaching limit, prioritize route detail and build steps over verbose descriptions",
     "Artifacts:",
     JSON.stringify({
       stack: {
@@ -1166,7 +1248,7 @@ export async function compileExecutablePlan(
   const fallback = () => fallbackStructuredPlan(stack, architecture, intent, snapshot, targetAgent);
   let structured: StructuredPlan;
   try {
-    structured = await callClaudeJson(prompt, structuredPlanSchema, fallback);
+    structured = await callClaudeJson(prompt, structuredPlanSchema, fallback, 2, "compileExecutablePlan", 10000);
   } catch (error) {
     console.warn(`Plan compilation failed, using fallback: ${errorMessage(error)}`);
     structured = fallback();
