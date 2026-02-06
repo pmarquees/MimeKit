@@ -170,11 +170,15 @@ select {
   animation: dither-flicker 0.16s steps(2, end) infinite;
 }
 
+.intake-logo-wrap {
+  margin-bottom: 20px;
+  line-height: 0;
+}
+
 .intake-logo {
   width: 130px;
   height: 130px;
   border-radius: 18px;
-  margin-bottom: 20px;
 }
 
 .intake-title {

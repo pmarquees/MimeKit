@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { useGlitch } from "react-powerglitch";
 import { DitherText } from "@/components/dither-text";
 import { RunResult, ScanMode } from "@/lib/models";
 
@@ -25,6 +26,50 @@ const ANALYSIS_COMPLETE_SOUND_KEY = "mimickit:play-analysis-complete-sound";
 export function RepoIntakePage(): React.ReactElement {
   const router = useRouter();
   const { data: session, status } = useSession();
+  const glitch = useGlitch({
+    playMode: "manual",
+    createContainers: true,
+    hideOverflow: false,
+    timing: {
+      duration: 300,
+      iterations: 1,
+      easing: "ease-in-out",
+    },
+    glitchTimeSpan: {
+      start: 0,
+      end: 1,
+    },
+    shake: {
+      velocity: 12,
+      amplitudeX: 0.04,
+      amplitudeY: 0.04,
+    },
+    slice: {
+      count: 4,
+      velocity: 14,
+      minHeight: 0.02,
+      maxHeight: 0.15,
+      hueRotate: true,
+    },
+    pulse: false,
+  });
+
+  // Fire a short glitch burst every 5 seconds
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      glitch.startGlitch();
+      window.setTimeout(() => glitch.stopGlitch(), 300);
+    }, 5000);
+    // Trigger once on mount after a brief delay
+    const initial = window.setTimeout(() => {
+      glitch.startGlitch();
+      window.setTimeout(() => glitch.stopGlitch(), 300);
+    }, 800);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(initial);
+    };
+  }, [glitch]);
   const [repoUrl, setRepoUrl] = useState("https://github.com/vercel/next.js");
   const [branch, setBranch] = useState("");
   const [scanMode, setScanMode] = useState<ScanMode>("quick");
@@ -85,13 +130,15 @@ export function RepoIntakePage(): React.ReactElement {
 
   return (
     <main className="intake-shell">
-      <img
-        src="/mimickit-logo.png"
-        alt="MimicKit"
-        className="intake-logo"
-        width={80}
-        height={80}
-      />
+      <div ref={glitch.ref} className="intake-logo-wrap">
+        <img
+          src="/mimickit-logo.png"
+          alt="MimicKit"
+          className="intake-logo"
+          width={80}
+          height={80}
+        />
+      </div>
       <section className={`intake-card ${busy ? "intake-card-loading" : ""}`} aria-busy={busy}>
         <p className="u-caps u-faint">MimeKit / Intent Transpiler</p>
         <h1 className="intake-title">Repository Intake</h1>
